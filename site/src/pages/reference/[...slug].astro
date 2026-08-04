@@ -1,0 +1,25 @@
+---
+import { getCollection, render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { refTitle, refKind } from '../../lib/reference.ts';
+
+export async function getStaticPaths() {
+  const refs = await getCollection('reference');
+  return refs.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const title = refTitle(entry.id, entry.body);
+const kind = refKind(entry.id);
+---
+<BaseLayout title={`${title} — Neato D10 Reference`}>
+  <p class="eyebrow">Reference</p>
+  <span class={`badge ${kind}`}>{kind}</span>
+  <p class="meta-line" style="margin-top:1rem;">
+    Living document — the current source of truth. (Episodes are snapshots; this stays current.)
+  </p>
+  <article class="prose">
+    <Content />
+  </article>
+</BaseLayout>

@@ -1,0 +1,57 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { refTitle, refKind, refOrder } from '../lib/reference.ts';
+
+const episodes = (await getCollection('episodes'))
+  .filter((e) => e.data.status !== 'draft')
+  .sort((a, b) => a.data.episode - b.data.episode);
+
+const latest = episodes[episodes.length - 1];
+
+const refs = (await getCollection('reference')).sort(
+  (a, b) => refOrder(a.id) - refOrder(b.id),
+);
+
+const fmt = (d?: Date) =>
+  d ? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+---
+<BaseLayout title="Neato D10 Brain Transplant — devlog" description="Gutting a bricked Neato D10 and rebuilding it as an open, locally-controlled ROS 2 robot.">
+  <p class="eyebrow">A build serial</p>
+  <h1>Neato D10 Brain Transplant</h1>
+  <p class="muted" style="font-size:1.1rem;">
+    Neato went bust and the cloud went dark. So I'm gutting a bricked D10 and rebuilding it as an
+    open, locally-controlled ROS 2 robot — Raspberry Pi, ESP32, Home Assistant. Documented as I go.
+  </p>
+
+  {latest && (
+    <a href={`/episodes/${latest.id}/`} class="card" style="display:block;margin:2rem 0;">
+      <p class="eyebrow">Latest episode</p>
+      <h3 style="margin:0.2rem 0 0.4rem;">Ep. {latest.data.episode}: {latest.data.title}</h3>
+      <p class="muted" style="margin:0;">{latest.data.teaser}</p>
+    </a>
+  )}
+
+  <h2 id="episodes">Episodes</h2>
+  <ol class="ep-list">
+    {episodes.map((e) => (
+      <li>
+        <span class="ep-num">Ep. {e.data.episode}</span>
+        <span class="muted" style="font-size:0.85rem;"> &nbsp;·&nbsp; {fmt(e.data.sessionDate ?? e.data.pubDate)}</span>
+        <h3><a href={`/episodes/${e.id}/`}>{e.data.title}</a></h3>
+        <p class="teaser">{e.data.teaser}</p>
+      </li>
+    ))}
+  </ol>
+
+  <h2 id="reference">Reference</h2>
+  <p class="muted">The living docs — always current, unlike the episodes (which are snapshots in time).</p>
+  <div class="card-grid">
+    {refs.map((r) => (
+      <div class="card">
+        <span class={`badge ${refKind(r.id)}`}>{refKind(r.id)}</span>
+        <h3 style="margin:0.5rem 0 0.3rem;"><a href={`/reference/${r.id}/`}>{refTitle(r.id, r.body)}</a></h3>
+      </div>
+    ))}
+  </div>
+</BaseLayout>

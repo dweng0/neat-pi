@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Astro build output
+site/dist/
+site/.astro/
+
+# Local Claude settings (personal/local — but keep .claude/skills/ tracked)
+.claude/settings.local.json
+
+# Env / secrets
+.env
+.env.*
+
+# Logs
+*.log
+
+# OS cruft
+.DS_Store
+Thumbs.db

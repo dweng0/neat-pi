@@ -1,0 +1,26 @@
+---
+interface Link {
+  slug: string;
+  title: string;
+  episode: number;
+}
+interface Props {
+  prev?: Link;
+  next?: Link;
+}
+const { prev, next } = Astro.props;
+---
+<nav class="series-nav">
+  {prev ? (
+    <a class="prev" href={`/episodes/${prev.slug}/`}>
+      <span class="dir">← Previous</span>
+      <span class="t">Ep. {prev.episode}: {prev.title}</span>
+    </a>
+  ) : <span style="flex:1"></span>}
+  {next ? (
+    <a class="next" href={`/episodes/${next.slug}/`}>
+      <span class="dir">Next →</span>
+      <span class="t">Ep. {next.episode}: {next.title}</span>
+    </a>
+  ) : <span style="flex:1"></span>}
+</nav>

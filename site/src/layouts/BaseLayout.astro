@@ -1,0 +1,35 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="alternate" type="application/rss+xml" title="Neato D10 Devlog" href="/rss.xml" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav>
+        <a class="brand" href="/">Neato&nbsp;D10 <span>Brain Transplant</span></a>
+        <span class="spacer"></span>
+        <a href="/#episodes">Episodes</a>
+        <a href="/#reference">Reference</a>
+        <a href="/rss.xml">RSS</a>
+      </nav>
+    </header>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

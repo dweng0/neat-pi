@@ -1,0 +1,46 @@
+---
+import { getCollection, render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SeriesNav from '../../components/SeriesNav.astro';
+
+export async function getStaticPaths() {
+  const episodes = (await getCollection('episodes')).sort(
+    (a, b) => a.data.episode - b.data.episode,
+  );
+  return episodes.map((entry, i) => {
+    const prev = episodes[i - 1];
+    const next = episodes[i + 1];
+    return {
+      params: { slug: entry.id },
+      props: {
+        entry,
+        prev: prev && { slug: prev.id, title: prev.data.title, episode: prev.data.episode },
+        next: next && { slug: next.id, title: next.data.title, episode: next.data.episode },
+      },
+    };
+  });
+}
+
+const { entry, prev, next } = Astro.props;
+const { Content } = await render(entry);
+const d = entry.data;
+
+const fmt = (date?: Date) =>
+  date ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+---
+<BaseLayout title={`Ep. ${d.episode}: ${d.title} — Neato D10 Devlog`} description={d.teaser}>
+  <p class="eyebrow">Episode {d.episode}</p>
+  <h1>{d.title}</h1>
+  <p class="meta-line">
+    Published {fmt(d.pubDate)}
+    {d.sessionDate && <><span class="dot">·</span> bench session {fmt(d.sessionDate)}</>}
+  </p>
+
+  {d.heroPhoto && <img class="hero" src={`/photos/${d.heroPhoto}`} alt={d.title} />}
+
+  <article class="prose">
+    <Content />
+  </article>
+
+  <SeriesNav prev={prev} next={next} />
+</BaseLayout>
