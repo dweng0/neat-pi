@@ -129,17 +129,19 @@ The user's Elegoo starter kit contains (relevant items only):
 
 ## Open questions / risks
 
-- **i.MX 8M reuse fork — RESOLVED (2026-08-04): reuse is NOT viable → proceed with the Pi transplant.** Research confirms the D8/D9/D10 boot chain is locked: **OpenNeato supports D3–D7 only and explicitly excludes D8/D9/D10 ("different board, password-locked serial port")**; Neato firmware is encrypted/signed; i.MX HABv4 secure boot blocks unsigned images. No public root path for this generation, and the SoC is a modest single-A53 SoloLite anyway (the Pi 4 on hand is far stronger). The original transplant decision stands — now justified by the **locked boot chain** (correct), not "no OS" (which was wrong; there *is* a Linux brain in there). Sources in the build doc.
+- **i.MX 8M reuse fork — RESOLVED (2026-08-04): reuse is NOT viable → proceed with the Pi transplant.** **Three independent community projects all draw the line right below the D10** (community term: **"gen4"**): (1) OpenNeato/renjfk supports D3–D7, excludes D8–D10 ("different board, password-locked serial port"); (2) brainslug/"fang of vacuula" does gen2/gen3, says gen4 is "a completely different board, chip and firmware — cannot interface with directly"; (3) 94-psy got a D7 working then suspended. Plus Neato firmware is encrypted/signed and i.MX HABv4 secure boot blocks unsigned images. **No public root path exists for the D10, and even the "keep the board, talk over serial" shortcut is closed — full transplant is the *only* path.** The SoC is a modest single-A53 SoloLite anyway (Pi 4 on hand is far stronger). Transplant now justified by the **locked boot chain** (correct), not "no OS" (wrong — there *is* a Linux brain). Sources in build doc + links below.
 - **i.MX 8M variant — RESOLVED** (`MIMX8MN1DVTJZAA` = Nano SoloLite, industrial; 1× A53 + 1× M7, no GPU/NPU). First digit hard to read (`1` SoloLite vs `6` Quad) but moot now — reuse is off the table regardless.
 - **UART header (bonus from research):** OpenNeato documents the D3–D7 debug port as 4-pin **`RX / 3.3V / TX / GND`**, **3.3 V logic**. The D10's 4-pin header (bottom of board, see `shielding-removed.jpg`) is likely the same convention — noted only for optionally *watching* the locked boot log (blog material); needs a USB-TTL adapter or the Pi's UART.
-- **Roller brush stall current** — **TBD, the last gate on the driver order** *(only relevant if the transplant path wins the fork above)*. (Wheels **resolved**: ~2.1 A / ~2.4 A → DRV8871 ×2. Blower **resolved**: 2.0 A, no driver.)
+- **Roller brush stall current** — **TBD, the last gate on the driver order.** (Wheels **resolved**: ~2.1 A / ~2.4 A → DRV8871 ×2. Blower **resolved**: 2.0 A, no driver.)
 - Blower wire count — confirm 4 (PWM fan) vs 2 (plain brushed motor).
 - Encoder channel count — 6 harness wires = quadrature; 5 = single channel, direction-blind.
 - Encoder supply voltage (3.3 V vs 5 V) — determines whether a level shifter is needed.
-- LDS 2.2 packet format vs XV-11 — likely match or minor adaptation; confirm w/ analyzer.
+- LDS 2.2 packet format — **largely SOLVED by research (2026-08-04).** The Neato LDS ("Piccolo LDS") protocol is fully documented (ssloy repo): **8N1, 3.3 V, 115200 baud; 90 packets/rev × 22 bytes × 4 readings = 360 readings/rev (1980 bytes)**; each reading has distance + signal-strength + 2 warning flags. Spin motor is **host-driven PWM, closed-loop on the RPM reported in the data** (open-loop ~3.3 V @ ~60 mA ≈ 240 rpm; closed-loop recommended). Our LDS 2.2 is this same family — expect a match or trivial tweak; just confirm on capture. Data connector `Red +3.3/5V · Brown RX · Orange TX · Black GND`, motor connector `Red PWR · Black GND`.
 - Battery 6-pin pinout — **TBD** before connecting.
 - Sensor logic levels (bumper/cliff/wall/drop) — **TBD** when wiring.
 - Internal mounting space for Pi+ESP32 — **TBD** once old board fully removed.
+- **⚠️ THERMAL (NEW risk from prior art, 2026-08-04)** — the closest analogous project (`94-psy/OpenNeato`, a D7→SBC+ROS2+Nav2 build) was **SUSPENDED INDEFINITELY** partly because its **SBC cooked at 85 °C+** (thermal throttling) inside the sealed chassis with no room for a heatsink/fan. **The Pi 4 runs hotter than the Radxa Zero 3W they used** — so cooling/ventilation is a real design constraint, not an afterthought. Plan airflow, a heatsink, or a cooler board (Pi Zero 2 W?) when mounting. Ties into the mounting-space item above.
+- **✅ Architecture validated by that same failure** — 94-psy's *other* fatal issue was driving Neato's **factory serial-diagnostic port** for real-time control → buffer overflows, MCU crashes, dropped connections. **Our design sidesteps this entirely:** we gut Neato's board and run the real-time loop on our **own ESP32 (micro-ROS)**, not Neato's serial console. Their dead-end is evidence our Pi-4-brain + ESP32-real-time split is the right call.
 - Nav2 tuning — known hard/fiddly (documented, big community).
 - "Lost" status detection (localization loss) — least clean signal to detect.
 
@@ -147,7 +149,10 @@ The user's Elegoo starter kit contains (relevant items only):
 
 ## Reference links
 
-- Neato XV-11 LDS protocol + Linux impl — https://github.com/ssloy/neato-xv11-lidar
+- Neato XV-11 / Piccolo LDS protocol (full packet format + motor control) — https://github.com/ssloy/neato-xv11-lidar
+- **94-psy/OpenNeato** — closest prior art (D7 → SBC + ROS 2 + Nav2). **Suspended**; read its README for the thermal + serial-bottleneck post-mortem — https://github.com/94-psy/OpenNeato
+- **renjfk/OpenNeato** — D3–D7 cloud replacement (keeps Neato board, talks over serial). Debug-port pinout `RX/3.3V/TX/GND` — https://github.com/renjfk/OpenNeato
+- Philip2809/neato-brainslug ("fang of vacuula") — ESP-on-serial local control for **gen2/gen3** Neatos. Reviewed 2026-08-04: states **gen4 (= D8/D9/D10) is "a completely different board, chip and firmware, cannot interface with directly"** — a *third* independent confirmation the D10 is locked/uncharted and full transplant is the only path — https://github.com/Philip2809/neato-brainslug
 - XV-11 LDS on Raspberry Pi (C++, motor control) — https://github.com/berndporr/neato-xv11-lidar
 - XV-11 LIDAR tutorial (ev3dev) — https://www.ev3dev.org/docs/tutorials/using-xv11-lidar/
 - OpenNeato (D3–D7 context) — https://github.com/renjfk/OpenNeato
