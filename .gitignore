@@ -12,6 +12,12 @@ site/.astro/
 .env
 .env.*
 
+# Python venv for ESP32 tooling (machine-specific, regenerable)
+.esp-venv/
+
+# PlatformIO build cache + libs (regenerable via `pio run`)
+esp32-firmware/.pio/
+
 # Logs
 *.log
 

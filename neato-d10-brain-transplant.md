@@ -2,7 +2,7 @@
 
 **A "brain transplant" project: gutting a bricked Neato D10 and rebuilding it as an open, locally-controlled robot.**
 
-> Living document — last updated 2026-08-04. Findings below are confirmed from a hands-on teardown unless marked **TBD** (needs measurement) or `?` (unconfirmed).
+> Living document — last updated 2026-08-05. Findings below are confirmed from a hands-on teardown unless marked **TBD** (needs measurement) or `?` (unconfirmed).
 
 ---
 
@@ -36,12 +36,17 @@ Everything found inside, what happens to it, and why. Signal direction is relati
 |---|---|---|---|---|---|
 | Chassis, wheels, caster | Keep | — | — | — | Physical platform. Host the Pi + ESP32 here once the old board is out. |
 | Drive wheel motors ×2 (brushed DC + encoder) | Keep | `260-0016`, 14.4 V nominal; stall ~2.1 A (L) / ~2.4 A (R), measured 2026-08-04 | Motor power from driver (JST to old board) | Encoder pulses (channel count **TBD**) | Locomotion + odometry. Wire to an H-bridge; read encoders on the ESP32. Motor terminals = the two chunky solder posts flanking the encoder disc. |
-| **Wheel encoders ×2** (on the wheel motors) | Keep | Logic supply **TBD** (3.3 or 5 V) | Encoder Vcc/GND | A (+ B?) pulses | `LEGO WHEEL ENCODER ASY: 915-1055 REV`, board marked `STD-3`. Disc is **solid, not slotted** → likely **magnetic (ring magnet + Hall)**, not optical. Dirt-tolerant, which suits a vacuum. Sensing only — carries no motor power. |
-| Roller brush motor (brushed DC) | Keep (optional) | `905-0460-RoHS 14.4VDC` (batch `215I31`); current **TBD** | Motor power (JST) | — | Needed only if the robot should actually vacuum. Drive via H-bridge or MOSFET. **Only remaining motor whose current is unknown.** |
-| Blower / vacuum motor | Keep (optional) | EVERFLOW `F121225BU (AFX19bR)` — `DC14.4V 2.0AMP`, dated 2021-08-13 | 14.4 V + PWM in | Tach out (RPM) | **Brushless blower with integrated driver — needs NO H-bridge.** Feed it 14.4 V, PWM it straight from an ESP32 GPIO. See Blower section. |
+| **Wheel encoders ×2** (on the wheel motors) | Keep | Logic supply **TBD** (3.3 or 5 V) | Encoder Vcc/GND | **A + B pulses (quadrature)** | `LEGO WHEEL ENCODER ASY: 915-1055 REV`, board marked `STD-3`. Disc is **solid, not slotted** → **magnetic (ring magnet + Hall)**, not optical. Dirt-tolerant, which suits a vacuum. **Harness CONFIRMED 2026-08-05: 6 wires = 2 thick power + 4 encoder = quadrature (Vcc/GND/A/B), direction-aware** — good for odometry + slam_toolbox. Sensing only — carries no motor power. |
+| Roller brush motor (brushed DC) | Keep (optional) | `905-0460-RoHS 14.4VDC` (batch `215I31`); **stall ~7.6 A** (winding R ~1.9 Ω, measured 2026-08-05) | Motor power (JST) | **Hall tacho (Vcc/GND/signal)** | Needed only if the robot should actually vacuum. **Harness = 2 thick power + 3 thin Hall tacho** → free RPM / jam detection into an ESP32 GPIO. Drive via **Cytron MD13S** (bidirectional → auto-unjam possible in software). See Motor Current + BoM. |
+| Side brush motor (brushed DC) | Keep (optional) | Small can, 2-wire; **stall ~0.5–0.7 A** (winding R 20–30 Ω, measured 2026-08-05) | Motor power (2-wire, soldered to tabs) | — | Front-corner sweeper — flicks debris toward the suction. 2 wires + EMI cap, no sensor, spins one way. **Was missing from the original "four motors" inventory; found 2026-08-05.** Drive via **logic-level MOSFET module** + flyback diode. Photo `brush-motor.jpg`. |
+| Blower / vacuum motor | Keep (optional) | EVERFLOW `F121225BU (AFX19bR)` — `DC14.4V 2.0AMP`, dated 2021-08-13 | 14.4 V + PWM in | Tach out (RPM) | **Brushless blower with integrated driver — needs NO H-bridge.** 4 wires CONFIRMED. Feed it 14.4 V, PWM it straight from an ESP32 GPIO. See Blower section. |
 | **LiDAR — Neato LDS 2.2** (`290-1044 REV 4`) | **Keep (star part)** | Logic 5 V (~45 mA idle / ~135 mA spinning); TX/RX at **3.3 V**; spin motor separate | `J2 MAIN` (5 V + 3.3 V UART), `J3 MOTOR` (host-driven PWM) | `J2 MAIN`: 3.3 V UART **8N1 @ 115200** — distance packets | The reason this project is feasible. Read on Pi/ESP32; drive spin motor in a closed loop off the reported RPM. See LiDAR section below. |
 | Battery — Li-ion 14.4 V `4S2P` | Keep | 12 V (empty) → 16.8 V (full); 6200 mAh / 89 Wh | Dock charge (was via old board) | 6-pin JST: power + thermistor/sense | Powers everything through a buck converter. **Map the 6 pins before use** — only 2 are main +/−; others are temp/sense. |
-| Bumper / cliff / wall / drop sensors | Keep (as present) | 3.3–5 V logic, **TBD** | Sensor power (JST) | Digital/analog lines to old board | Reuse for obstacle + cliff safety on the ESP32. Identify each individually when wiring. |
+| **Front bumper switches ×4** | Keep | You supply reference V (no logic-level concern) | GPIO pull-up | Digital contact closure | `BUMP SWITCH 290-0056 REV.8` — mechanical tactile click-switches, 4 across the front bumper. Read on ESP32 GPIO + internal pull-up, active-low, ~5 ms debounce. **Confirmed NO 2026-08-06** (beeps when pressed) → **LOW = hit.** Photo `front-bumper-switch.jpg`. |
+| **Wheel-drop / lift switch** ("dead-man's") | Keep | You supply reference V | GPIO pull-up | Digital contact closure | `DT-08` lever microswitch (`3A 125VAC`) in the wheel arch — detects a drive wheel dropping (robot lifted / over an edge). Typically one per drive wheel. Same GPIO+pull-up as bumpers. **Confirmed NO 2026-08-06** — mechanism: on the ground the wheel is held up (lever open/**HIGH**); lifting lets the wheel fall, which *presses* the lever (closed/**LOW**) → **LOW = wheel dropped / robot lifted → stop drive.** Same active-low polarity as bumpers. Photo `wheel-arch-dead-mans-switch.jpg`. |
+| **Cliff / drop sensors** (IR) | Keep (**safety-critical**) | **~3.3 V** (0–3 V analog swing per prior art → native ADC, no level shifter) | **5-wire JST ZH 1.5 mm**; two sensors gang → 10-pin at old board | **Analog reflectance → ESP32 ADC** | `LOUIE DRP SENSOR 290-1023 REV 2` (© 2017) — downward IR reflectance eye, **discrete IR emitter + phototransistor** (two clear windows); stops it driving off stairs. **Host-driven: emitter is strobed/modulated and the phototransistor sampled synchronously** for ambient rejection — do the same in firmware; not a clean high/low, threshold in software. Wire convention (prior art): **black = GND, red = Vcc**; brown/yellow/green = emitter-drive + signal (which-is-which → quick functional test at Step 4). **≥2 confirmed** (gang-of-2); full count pending full undercarriage removal. A static DC diode test is defeated by an on-board decoupling cap — don't bother; power it and strobe. Photos `under-carriage-sensor.jpg`, `cliff-sensor-front.jpg`, `cliff-sensor-connector.jpg`, `cliff-sensor-harness-cut-tails.jpg`. |
+| **Side / wall sensor** (IR) | Keep | Same as cliff — **~3.3 V analog** | Same `LOUIE DRP 290-1023` board | **Analog reflectance → ESP32 ADC** | **Confirmed 2026-08-06: the side/wall sensor is the *same* `LOUIE DRP 290-1023` part as the cliff sensor** (silkscreen matches) — identical wiring, 3.3 V analog, and firmware strobe/sample. **Overrides the forum "Sharp GP2Y0A51 wall sensor" lead** — that Sharp module does not apply to this D10. One sensor type covers both cliff + wall. |
+| Rear speaker | Keep (nice-to-have) | via amp | — | — | Small speaker at the back. Drive with a class-D mono amp (PAM8302-class) fed from an ESP32 DAC pin for audio cues (stuck/docked/bin-full). No build dependency. |
 
 ### Discarded
 
@@ -120,10 +125,11 @@ Label reads `MODEL: F121225BU (AFX19bR)` / `DC14.4V 2.0AMP` / `2021 08 13`. Two 
 | Motor | Rating source | Current | Driver decision |
 |---|---|---|---|
 | Blower/vacuum | **Printed on label** | **2.0 A** | ✅ None needed — PWM direct from ESP32 |
-| Roller brush | Not printed anywhere | **TBD** | Blocked on measurement |
-| Drive wheel ×2 | Winding resistance (2026-08-04) | **~2.1 A (L) / ~2.4 A (R)** — matched pair, size to ~2.5 A | **`DRV8871` ×2** — TB6612 out (stall > its ~1.2 A continuous) |
+| Roller brush | Winding resistance (2026-08-05) | **~7.6 A stall** (R ~1.9 Ω) — 3× the wheels | ✅ **`Cytron MD13S`** (bidirectional, 13 A / 30 A peak) |
+| Side brush | Winding resistance (2026-08-05) | **~0.5–0.7 A stall** (R 20–30 Ω) | ✅ **logic-level MOSFET module** (+ flyback diode) |
+| Drive wheel ×2 | Winding resistance (2026-08-04) | **~2.1 A (L) / ~2.4 A (R)** — matched pair, size to ~2.5 A | ✅ **`DRV8871` ×2** — TB6612 out (stall > its ~1.2 A continuous) |
 
-Method changed: rather than trying to catch a millisecond inrush spike on a 2000-count meter, **derive stall current from winding resistance** — `stall ≈ 14.4 V ÷ R`. No power applied, no risk. See `neato-d10-measuring-motor-current.md`.
+Method: rather than trying to catch a millisecond inrush spike on a 2000-count meter, **derive stall current from winding resistance** — `stall ≈ 14.4 V ÷ R`. No power applied, no risk. See `neato-d10-measuring-motor-current.md`. **All 5 motors now measured — no current gates remain.**
 
 ---
 
@@ -133,22 +139,28 @@ Method changed: rather than trying to catch a millisecond inrush spike on a 2000
 Raspberry Pi 4 · soldering iron + solder · multimeter · breadboard · Arduino (e.g. Elegoo starter kit — bench part-testing only, *not* the final co-processor).
 
 ### Ordered
-| Item | Purpose | Spec / search term | Qty |
+| Item | Purpose | Spec / confirmed part | Qty |
 |---|---|---|---|
 | ESP32 WROOM-32 (USB-C) | Real-time motor/sensor co-processor (micro-ROS) | Dual-core, 4 MB flash, CH340C | 2 |
 | 8-ch logic analyzer | Decode LDS 2.2 packets + encoder signals | 24 MHz clone + PulseView (sigrok) | 1 |
 | Heat-shrink assortment | Wiring insulation | 2:1, assorted diameters | 1 |
 | Dupont jumper wires | Bench prototyping | M-M / M-F / F-F | 1 set |
+| **DRV8871 driver** | Drive the 2 wheel motors | **Adafruit ADA3190** (6.5–45 V, 3.6 A peak, 2×GPIO). Ordered 2026-08-05. | 2 |
+| **Cytron MD13S driver** | Drive the roller brush | Pi Hut "13A 6V-30V DC Motor Driver" **SKU 106189** (MD13S = MD10C successor; bidirectional, 3.3/5 V logic, PWM+DIR, 20 kHz). Ordered 2026-08-05. | 1 |
+| **Gravity MOSFET module** | Drive the side brush | DFRobot Gravity MOSFET Power Controller (3.3–10 V logic trigger, 5–36 V/20 A; ⚠️ 1 kHz max switching = on/off only; ⚠️ add flyback diode). Ordered 2026-08-05. | 1 |
+
+### Sourcing elsewhere (spec locked, not yet ordered)
+| Item | Purpose | Spec / search term | Note |
+|---|---|---|---|
+| **5 V rail (UBEC)** | 14.4 V battery → 5 V for the Pi | **7 A switching UBEC** (2–7S / 5.5–35 V in, 7 A continuous, 5.25 V ±0.5 V out, 300 kHz, ~92% eff., over-temp + reverse-polarity protection). ~£6–8 eBay/AliExpress. **Meter to ~5.25 V before wiring the Pi.** | Chosen for thermal headroom (loafs at ~3.5 A load → cool, which the sealed chassis needs). ⚠️ ships from China (long lead) — order early. Rejected: 3 A modules (brown out Pi 4), XL4015 (non-sync, hot; bench-only), Pololu D36V50F5 (correct but £38). |
+| **Speaker amp** | Drive the rear speaker | Class-D mono, 5 V, drives 4 Ω+, single-ended analog input (ESP32 DAC). Reference: Adafruit PAM8302 (ADA5647). | Optional; no build dependency. |
 
 ### Hold until measured (post-teardown specifics)
 | Item | Purpose | Spec / search term | Blocked on |
 |---|---|---|---|
-| Buck converter | 14.4 V battery → 5 V for the Pi | **Input must start below 12 V** (e.g. 6–24 V in), **5 V @ ≥5 A** out. `LM2596 buck converter 5V 5A` or `DC-DC step down 6-24V to 5V 5A`. Avoid car-type fixed-12 V modules (Pi browns out near empty). | Spec locked ✅ — just buy when ready |
-| Drive-motor driver | Drive the 2 wheel motors | **`DRV8871` ×2** — wheels measured ~2.1 A / ~2.4 A stall (2026-08-04), matched pair. In the 1–3 A band where TB6612/DRV8833 are marginal; DRV8871 (3.6 A) has headroom. | ✅ Resolved |
-| Brush driver | Drive the roller brush | Single-direction: MOSFET module, or `BTS7960` for headroom | Measure brush winding resistance |
 | ~~Blower driver~~ | ~~Drive the vacuum motor~~ | **REMOVED** — blower is a brushless PWM fan with its own driver. Optionally a small high-side MOSFET switch for hard on/off. | ✅ Resolved |
-| JST connector kit | Tap the harness without cutting | Pitch **TBD** — measure the plugs first (JST family has several pitches) | Measure connector pitch |
-| Logic level shifter | 5 V ↔ 3.3 V, only if a kept sensor is 5 V logic | Bidirectional module | Confirm any 5 V sensor logic |
+| JST connector kit | Tap harnesses without cutting | **Cliff/side sensor connector = JST ZH 1.5 mm, 5-pin** (measured 6 mm pin1→pin5 span, 2026-08-06). Cliff harness was *cut* instead — sensor keeps its native mated plug as a permanent pigtail, so **no kit needed there.** Kit still useful for encoder/tacho/battery plugs (pitches TBD). | Encoder/tacho/battery plug pitches still to measure |
+| Logic level shifter | 5 V ↔ 3.3 V, only if a kept sensor/encoder/tacho is 5 V logic | Bidirectional module | **Cliff/side sensors resolved: ~3.3 V, no shifter needed.** Still confirm encoders + roller tacho (3.3 vs 5 V). |
 | T10 Torx driver (long reach) | Remaining recessed case screws | Long, slim shaft — `T10 Torx screwdriver long reach precision` | Optional but likely useful |
 | Standoffs / mounts | Mount Pi + ESP32 in the chassis | Sizes **TBD** | Measure free space |
 
@@ -164,8 +176,9 @@ Sequenced so there are working milestones early and the hard nav work last.
 1. **ESP32 + one motor driver → drive a single wheel from a serial command.** Proves the toolchain; instant feedback.
 2. **Add encoders** → confirm distance-travelled readings (odometry foundation).
 3. **LiDAR bring-up** → power the LDS, drive its spin motor, capture `J2` with the logic analyzer, confirm/adapt the packet decoder. (De-risked, but still the highest-value integration.)
-4. **Bare-bones MQTT bridge** → HA sends `start`, robot just drives forward. Proves the whole HA → Pi → ESP32 → motor pipeline end-to-end *before* SLAM exists.
-5. **slam_toolbox + Nav2** → mapping, localization, coverage. The 80%. Expect real time in Nav2 config tuning — documented, big community, but fiddly.
+4. **Wire the safety sensors** → bump switches ×4 + wheel-drop on GPIOs; cliff sensors on ADC (after counting + metering Vcc). Cliff safety before the robot roams.
+5. **Bare-bones MQTT bridge** → HA sends `start`, robot just drives forward. Proves the whole HA → Pi → ESP32 → motor pipeline end-to-end *before* SLAM exists.
+6. **slam_toolbox + Nav2** → mapping, localization, coverage. The 80%. Expect real time in Nav2 config tuning — documented, big community, but fiddly.
 
 ---
 
@@ -177,11 +190,13 @@ Sequenced so there are working milestones early and the hard nav work last.
 | Nav2 tuning | The real time-sink. Powerful but fiddly; everyone hits this wall. |
 | "Lost" detection | Localization-loss is the least clean status signal to detect reliably. |
 | Blower current + driver | **Resolved** — 2.0 A on the label; brushless PWM fan needs no driver at all. Confirm 4-wire count. |
-| Motor current draw | **Wheels resolved** — ~2.1 A / ~2.4 A stall (2026-08-04) → DRV8871 ×2. **Brush still TBD** — measure winding resistance next. |
-| Encoder channel count | **TBD** — 6 harness wires = quadrature (direction-aware); 5 = single channel, direction-blind. Matters for odometry quality and for slam_toolbox. |
-| Encoder supply voltage | **TBD** — 3.3 V or 5 V; determines whether a level shifter is needed. |
-| Sensor logic levels | **TBD** — map each kept sensor when wiring. |
+| Motor current draw | **RESOLVED — all 5 motors measured.** Wheels ~2.1/2.4 A → DRV8871 ×2; roller ~7.6 A → Cytron MD13S; side brush ~0.7 A → MOSFET module; blower 2.0 A (label) → no driver. Parts vetted + ordered 2026-08-05. |
+| Encoder channel count | **RESOLVED 2026-08-05** — 6 harness wires = quadrature, direction-aware. Good for odometry + slam_toolbox. |
+| Cliff-sensor count + Vcc | **Largely resolved 2026-08-06** — Vcc **~3.3 V** (0–3 V analog per prior art → native ADC, no shifter); **≥2 sensors** (gang-of-2 into a 10-pin); **side/wall sensor is the same `LOUIE DRP 290-1023` part.** Emitter is **host-strobed**, not static (a DC diode test is swamped by an on-board cap). Residual: full sensor count (pending full undercarriage) + which of brown/yellow/green is emitter-drive vs signal (quick functional test at Step 4). |
+| Encoder / roller-tacho supply voltage | **TBD** — 3.3 V or 5 V; determines whether a level shifter is needed on those signal lines. |
+| Bump / wheel-drop switch logic | **Resolved** — mechanical contact closure, GPIO + pull-up; no logic-level risk. |
 | Battery 6-pin pinout | **TBD** — identify power vs thermistor/sense before connecting. |
+| Power rail | **⚠️** a 3 A 5 V rail browns out a Pi 4 under Nav2 (reboots / SD corruption) → buck must be 5 A continuous. |
 | Internal mounting space | **TBD** — measure once the old board is out. |
 
 ---

@@ -2,7 +2,7 @@
 
 **Purpose:** snapshot of where this project stands so it can be resumed in a fresh conversation without re-deriving anything. Pairs with the main build doc: `neato-d10-brain-transplant.md`.
 
-**Last updated:** 2026-08-04
+**Last updated:** 2026-08-06
 
 ---
 
@@ -10,9 +10,11 @@
 
 The user has a Neato D10 robot vacuum. Neato went bust; Vorwerk killed the cloud (Q4 2025). **Working plan: "brain transplant"** — rebuild as a ROS 2 robot on a Raspberry Pi 4 + ESP32, controlled from Home Assistant as an MQTT vacuum, keeping the mechanically/electrically standard parts. The user wants **full vacuum function** (keep brush + blower motors), and intends to **blog the findings on GitHub** eventually.
 
-**Premise correction (2026-08-04), now resolved:** the transplant was originally justified by "bare-metal LPC51U68, no OS, can't be rooted." The "no OS" half was **wrong** — lifting the RF shield revealed a full **NXP i.MX 8M Nano SoloLite Linux computer** (SoC + DDR3 + 4 GB eMMC + PCA9450 PMIC) beside the LPC51U68, so the robot is a **two-brain design** (i.MX = Linux brain, LPC51U68 = real-time body controller). But the *conclusion* still holds: research confirms the **D8/D9/D10 boot chain is locked** (OpenNeato excludes them — "password-locked serial port"; encrypted/signed firmware; i.MX HAB secure boot), so **reusing the existing brain is not viable. Transplant confirmed — full steam ahead on the Pi 4 + ESP32 path.**
+**Premise correction (2026-08-04), resolved:** the transplant was originally justified by "bare-metal LPC51U68, no OS." That was **wrong** — lifting the RF shield revealed a full **NXP i.MX 8M Nano SoloLite Linux computer** beside the LPC51U68 (a **two-brain design**). But the *conclusion* still holds: the **D8/D9/D10 boot chain is locked** (OpenNeato excludes them; encrypted/signed firmware; i.MX HAB secure boot), so **reusing the existing brain is not viable. Transplant confirmed.**
 
-The user is hands-on: has soldering gear, a multimeter, a Pi 4, an Elegoo Arduino starter kit, and is comfortable opening hardware. Teardown is essentially complete.
+The user is hands-on: soldering gear, a multimeter, a Pi 4, an Elegoo Arduino starter kit, comfortable opening hardware. **Teardown is complete — every motor measured, every driver chosen, vetted, ordered and now ARRIVED.**
+
+**Latest (2026-08-06, session 2):** **the whole power stage arrived** — 2× DRV8871, Cytron MD13S, side-brush MOSFET, plus the speaker amp. That **unblocks build step 2** (real wheel motor + encoder). This session's bench work was **sensors**: the digital safety switches are fully characterised, and the cliff/wall sensor is characterised via prior art (the multimeter couldn't crack it — see below). **Focus now: build step 2 (encoders → odometry) — the drivers are here, so it's the top real-hardware milestone.**
 
 ---
 
@@ -20,60 +22,88 @@ The user is hands-on: has soldering gear, a multimeter, a Pi 4, an Elegoo Arduin
 
 | Thing | Finding |
 |---|---|
-| **Main application processor** | **NXP i.MX 8M Nano SoloLite** (`MIMX8MN1DVTJZAA`, industrial grade) under the RF shield — **1× Cortex-A53 (Linux) + 1× Cortex-M7 (real-time), no GPU/VPU/NPU.** Big BGA + `NANYA NT5AD256M16D9-HR` DDR3L + `Kingston EMMC04G-W627` (4 GB eMMC) + `NXP PCA9450B` PMIC. **This is a Linux computer** — boots an OS from eMMC. Found 2026-08-04. *(First digit `1`=SoloLite hard to read; worth a re-check — `1` vs `6`/Quad is 4× the cores.)* Photos: `board-imx8m-soc.jpg`, `board-nanya-dram-and-lpc51u68.jpg`, `board-kingston-emmc.jpg`, `board-soc-cluster-overview.jpg`. |
-| Real-time MCU | **NXP LPC51U68** (Cortex-M0+, 256 KB flash) — **the body controller, NOT the whole brain.** Handles motors/encoders/sensors in real time; takes commands from the i.MX 8M. |
-| Mainboard P/N | `520-0394 Rev.B`, has USB-C "SW Update" service port (candidate UART/console + i.MX serial-download port — investigate). |
-| ~~WiFi/BT "module"~~ | The perforated RF shield did **not** cover a throwaway WiFi module — it covered the i.MX 8M Linux subsystem above. WiFi/BT combo chip is a small QFN in that cluster. **Do not discard this board section.** |
-| Button board | Small `neato` PCB (TP1–TP22) under power+reset buttons → **discard** |
-| **LiDAR** | **Neato LDS 2.2** (`290-1044 REV 4`, © 2019). Standard Neato LDS. **8N1 UART, 3.3 V, 115200 baud.** Connectors: `J2 MAIN` (5 V power + serial data out), `J3 MOTOR` (spin motor, host-driven PWM closed-loop off reported RPM). LM393 comparator on chip side = classic design. Existing driver code exists (xv_11 / ssloy / berndporr repos). |
+| **Main application processor** | **NXP i.MX 8M Nano SoloLite** (`MIMX8MN1DVTJZAA`, industrial) under the RF shield — 1× Cortex-A53 (Linux) + 1× Cortex-M7 (real-time), no GPU/VPU/NPU. + `NANYA` DDR3L + `Kingston` 4 GB eMMC + `NXP PCA9450B` PMIC. A Linux computer, but boot chain locked → **discard**. Photos: `board-imx8m-soc.jpg`, `board-nanya-dram-and-lpc51u68.jpg`, `board-kingston-emmc.jpg`, `board-soc-cluster-overview.jpg`. |
+| Real-time MCU | **NXP LPC51U68** (Cortex-M0+) — the body controller, not the whole brain. Discarded with the board. |
+| Mainboard P/N | `520-0394 Rev.B`, USB-C "SW Update" service port. **Discard** (reuse ruled out). |
+| **LiDAR** | **Neato LDS 2.2** (`290-1044 REV 4`, © 2019). **8N1 UART, 3.3 V, 115200 baud.** `J2 MAIN` (5 V power + serial), `J3 MOTOR` (host-driven PWM, closed-loop off reported RPM). Protocol documented (Piccolo/XV-11 family) — expect a match on capture. |
 | Battery | Li-ion **14.4 V nominal** `4S2P`, 6200 mAh / 89 Wh. Real range **12 V (empty) → 16.8 V (full)**. 6-pin JST = power + thermistor/sense (pinout not yet mapped). |
-| **Drive wheel motors** | `260-0016`, 14.4 V, batch `21 41`. Brushed DC. **Stall MEASURED 2026-08-04: L ≈ 2.1 A (R 6.7 Ω), R ≈ 2.4 A (R 5.9 Ω)** via winding resistance. Matched pair → size to ~2.5 A. |
-| **Wheel encoders** | `LEGO WHEEL ENCODER ASY: 915-1055 REV`, board marked `STD-3`. Disc is **solid, not slotted** → likely **magnetic (Hall)**, not optical — good, dirt-tolerant. **Sensing only, carries no motor power.** Motor terminals are the two chunky solder posts flanking the disc. Wire count / channel count still TBD. |
-| Roller brush motor | `905-0460-RoHS 14.4VDC`, batch `215I31`. Brushed DC. No current rating → **still must be measured** (the one remaining unknown current). |
-| **Blower/vacuum** | EVERFLOW `F121225BU (AFX19bR)` — **`DC14.4V 2.0AMP`**, dated 2021-08-13. **Current is printed on the label — no measurement needed.** `…BU` suffix = Everflow's 4-wire PWM family → **brushless with integrated driver; needs NO H-bridge.** 4 wires seen (black/red/yellow/blue). |
-| Multimeter | **MS8233A**, 2000 counts, 600 V CAT III. **10 A jack IS fused** (panel reads `MAX 10A FUSED`, max 30 s every 15 min) — corrected 2026-08-04 from an earlier "unfused" note. Ω ranges 200 → 2 M; 200 Ω range gives 0.1 Ω resolution (marginal for motor windings — round up). |
+| **Drive wheel motors** | `260-0016`, 14.4 V, brushed DC. **Stall MEASURED: L ≈ 2.1 A (R 6.7 Ω), R ≈ 2.4 A (R 5.9 Ω).** Matched pair. → **DRV8871 ×2 (ARRIVED).** |
+| **Wheel encoders** | `LEGO WHEEL ENCODER ASY: 915-1055 REV`, `STD-3`. Solid disc → magnetic (Hall). **Harness CONFIRMED: 6 wires = 2 thick power (red/black) + 4 encoder = QUADRATURE (Vcc/GND/A/B), direction-aware.** Good for odometry + slam_toolbox. Supply voltage (3.3 vs 5 V) still TBD. |
+| **Roller brush motor** | `905-0460-RoHS 14.4VDC`, brushed DC. **Winding R MEASURED: ~1.9 Ω → stall ≈ 7.6 A.** Beefy — 3× the wheels. → **Cytron MD13S (ARRIVED).** **Harness: 2 thick power + 3 thin = Hall tacho (Vcc/GND/signal)** → free brush-jam / RPM detection into an ESP32 GPIO. Bidirectional driver → **auto-unjam in software later**. Tacho supply voltage TBD. |
+| **Side brush motor** | Small brushed DC can, front-corner sweeper. **2 wires only, EMI cap, no sensor.** **Winding R MEASURED: 20–30 Ω → stall ≈ 0.5–0.7 A.** → **logic-level MOSFET module (ARRIVED)**. Photo: `brush-motor.jpg`. |
+| **Blower/vacuum** | EVERFLOW `F121225BU (AFX19bR)` — **`DC14.4V 2.0AMP`** on the label. `…BU` = 4-wire PWM family → brushless w/ integrated driver, **needs NO H-bridge.** **4 wires CONFIRMED.** |
+| **Front bumper switches** | **`BUMP SWITCH 290-0056` REV.8** — mechanical tactile click-switch. **User counts 4.** **CONFIRMED 2026-08-06: normally-open** (beeps when pressed) → **GPIO + `INPUT_PULLUP`, active-low, LOW = hit**, ~5 ms debounce. Photo: `front-bumper-switch.jpg`. |
+| **Wheel-drop / lift switch** | **`DT-08` lever microswitch** (`3A 125VAC`), wheel arch — the "dead-man's" switch. **CONFIRMED 2026-08-06: normally-open.** Mechanism: on the ground the wheel is held up → lever open (**HIGH**); lift the robot → wheel falls → **presses** the lever (closed, **LOW**). So **LOW = wheel dropped / robot lifted → stop drive.** Same wiring + polarity as bumpers (GPIO + pull-up, active-low). One per drive wheel. Photo: `wheel-arch-dead-mans-switch.jpg`. |
+| **Cliff / drop sensors** | **`LOUIE DRP SENSOR 290-1023 REV 2` (© 2017)** — downward IR reflectance, **discrete IR emitter + phototransistor** (two clear windows). **CHARACTERISED 2026-08-06 (via prior art + teardown):** runs on **~3.3 V** (signal swings 0–3 V → native ESP32 ADC, **no level shifter**); wire convention **black = GND, red = Vcc**, brown/yellow/green = emitter-drive + signal. **Host-driven: emitter is strobed/modulated + phototransistor sampled in sync** (ambient rejection) — replicate in firmware; a static DC diode test is defeated by an on-board decoupling cap (don't bother). **≥2 sensors** (two gang into a 10-pin at the old board; vendors sell as a "2× set"). Connector = **JST ZH 1.5 mm, 5-pin**. Photos: `under-carriage-sensor.jpg`, `cliff-sensor-front.jpg`, `cliff-sensor-connector.jpg`, `cliff-sensor-harness-cut-tails.jpg`. |
+| **Side / wall sensor** | **CONFIRMED 2026-08-06: same `LOUIE DRP 290-1023` board as the cliff sensor** (silkscreen matches). Same ~3.3 V analog reflectance, same ADC + firmware strobe/sample treatment. **Overrides the forum "Sharp GP2Y0A51 wall sensor" lead** — that does not apply to this D10. One sensor type covers cliff + wall. |
+| **Rear speaker** | Small speaker at the back. Keep/drive for audio cues (stuck/docked/bin-full). Plan: **class-D mono amp (PAM8302-class, ARRIVED)** fed from an **ESP32 DAC pin**. Nice-to-have, no build dependency. |
+| Multimeter | **MS8233A**, 2000 counts. 10 A jack IS fused (`MAX 10A FUSED`). Ω 200 range = 0.1 Ω resolution. Diode mode open-circuit ~2 V (so a charging cap reads ~1.7 then OL — a false "diode"). |
 
-**Important gotcha:** the "19.5 V 1.5 A" on the device plate is the **dock charge input**, NOT the battery. Tap the 14.4 V battery for the buck converter.
+**Important gotcha:** the "19.5 V 1.5 A" device plate is the **dock charge input**, NOT the battery. Tap the 14.4 V battery for the buck converter.
 
-**Winding-resistance measurement — what actually works (learned 2026-08-04):** hand-held probes give garbage — contact resistance bounces the reading 20→100 Ω and fakes a high number. Use **alligator clips** on the two chunky posts, then **rotate the shaft, STOP, let it settle, and only then read.** Take the lowest *stable, repeatable* value. Ignore anything that flashes by mid-twist (those are the clips shifting, not the commutator). Leads measured `0.1 Ω`, subtract from every reading.
+**Winding-resistance method (proven):** alligator clips (not hand probes), rotate shaft → STOP → settle → read lowest *stable* value. Subtract `0.1 Ω` leads. `stall ≈ 14.4 V ÷ R`.
+
+**Cliff-sensor probing (learned the hard way):** don't try to DC-diode-test it. The fine-pitch JST fouls Dupont, the old board's ESD clamps contaminate readings through the ground plane, and an on-board cap fakes a diode. It's an analog, host-*strobed* reflectance sensor — to finish the pinout, **power it and observe**, don't meter it statically.
 
 ---
 
 ## Architecture (decided)
 
-- **Home Assistant** — scheduling + notifications. Robot exposed as HA **MQTT Vacuum** entity. (MQTT, not Zigbee — that was discussed and settled.)
-- **Raspberry Pi 4** — the brain. ROS 2 + Nav2 (coverage/path planning) + slam_toolbox (mapping/localization) + a ~100-line MQTT↔ROS bridge node.
-- **ESP32 (micro-ROS)** — real-time co-processor: motor PWM, encoder counting, sensor polling, battery voltage. Joins the ROS 2 graph directly over USB serial.
+- **Home Assistant** — scheduling + notifications. Robot = HA **MQTT Vacuum** entity.
+- **Raspberry Pi 4** — the brain. ROS 2 + Nav2 + slam_toolbox + a ~100-line MQTT↔ROS bridge node.
+- **ESP32 (micro-ROS)** — real-time co-processor: motor PWM, encoder counting, sensor polling (bump/drop switches, cliff/wall ADC), battery voltage. Joins the ROS 2 graph over USB serial.
 
 ---
 
-## Motor driver plan (wheels resolved; brush pending one measurement)
+## Build infrastructure — set up & proven (2026-08-06)
 
-Full vacuum = **4 motors**, but only **3 need drivers** — the blower turned out to have its own.
+**Step 1 (toolchain + first motor) is DONE.** What exists on the bench + in the repo:
 
-| Motors | Driver | Why |
-|---|---|---|
-| 2× drive wheels | **2× `DRV8871`** (one single H-bridge per wheel) ✅ **RESOLVED** | Measured stall ~2.1 A / ~2.4 A. In the 1–3 A band where TB6612FNG (~1.2 A/ch continuous) is marginal; DRV8871 (3.6 A) has headroom. One motor per board. |
-| Roller brush | **1× BTS7960** or a MOSFET module — *pending measurement* | One-direction, moderate current. Measure winding resistance to choose. |
-| ~~Blower/vacuum~~ | **NONE — resolved** | Brushless PWM fan with integrated driver. 14.4 V + PWM straight from an ESP32 GPIO (~25 kHz). Free tach line back for RPM/clog detection. |
+| Thing | State |
+|---|---|
+| **ESP32 board** | **`ESP32-D0WD-V3`** (rev 3.1), dual-core 240 MHz, Wi-Fi+BT, **4 MB flash**. CH340C USB-serial, **no driver needed on macOS**. **Auto-reset via RTS works** — no BOOT/EN dance. Pins labelled **`D25`/`D26`/`D27`** = GPIO25/26/27. |
+| **Serial port** | Enumerates as **`/dev/cu.usbserial-110`** (⚠️ a pre-existing `usbserial-21420` is a red herring). If replugged: `ls /dev/cu.usbserial*`. |
+| **Toolchain** | **PlatformIO** (chosen over Arduino IDE — smoother road to micro-ROS). Project venv at **`.esp-venv/`** (gitignored). Xtensa toolchain cached. |
+| **Firmware** | `esp32-firmware/` — `platformio.ini` (board `esp32dev`, port + 115200 baked in) + `src/main.cpp`. Currently the **STEP-1 motor driver**: `F <0-255>` fwd / `R <0-255>` rev / `S` stop / `B` brake. LED (GPIO2) heartbeats. Build+flash: `.esp-venv/bin/pio run -d esp32-firmware -t upload`. |
+| **Bench test harness** | `hardware-scripts/test-scripts/motor-test.py` (+ README). `--demo` ramp+reverse, `--cmd "F 200"` one-shot, no args = interactive `motor>` prompt. Run via `../../.esp-venv/bin/python3 motor-test.py`. New bench scripts slot in here. |
 
-**Blower wiring (standard 4-wire fan convention, verify before trusting):** black = GND, red = +14.4 V, yellow = tach out, blue = PWM in. **Do not** put an H-bridge on it (reversing confuses the internal controller) and **do not** measure its winding resistance (you'd be probing driver electronics, not a winding).
+**Step-1 bench rig (retire it — it was only the toolchain proof):** ESP32 `D25→L293D EN`, `D26→IN1`, `D27→IN2`, `VIN→Vcc1`, motor across the bridge, common ground. **Do NOT** put a real wheel motor on the L293D (stall >2 A cooks it) — that's what the DRV8871s (now arrived) are for.
 
-**Key principle: size drivers to STALL current, not running current.** Wheels done; brush still pending. Do NOT finalise the driver order until the brush is measured — buying now is guessing.
+---
 
-**Why the ESP32 needs drivers at all:** ESP32 GPIO outputs ~mA at 3.3 V — enough to *signal*, not to *spin a motor*. The motor driver (H-bridge/MOSFET) is the muscle that switches battery current under ESP32 control. There is no separate "driver" needed for the ESP32 itself to run.
+## Motor driver plan — COMPLETE, VETTED & ARRIVED
+
+Full vacuum = **5 motors**, **4 drivers** (blower needs none).
+
+| Motor(s) | Stall | Driver | Confirmed part | Status |
+|---|---|---|---|---|
+| 2× drive wheels | ~2.1 / 2.4 A, quadrature encoders | **2× DRV8871** | **Adafruit ADA3190** (6.5–45 V in, 3.6 A peak, IN1/IN2, default 30 kΩ Rlim ≈ 2 A) | ✅ **ARRIVED** |
+| Roller brush | ~7.6 A, + Hall tacho | **1× Cytron MD13S** (bidirectional) | **Pi Hut SKU 106189**, 6–30 V, 13 A cont / 30 A peak, 3.3 V & 5 V logic, PWM+DIR, 20 kHz | ✅ **ARRIVED** |
+| Side brush | ~0.5–0.7 A, 2-wire | **1× logic-level MOSFET module** | **DFRobot Gravity MOSFET Power Controller** (3.3 V trigger, VIN 5–36 V/20 A). ⚠️ 1 kHz max → on/off only (fine for side brush). ⚠️ add flyback diode (Elegoo kit). | ✅ **ARRIVED** |
+| Blower/vacuum | 2.0 A, 4-wire PWM brushless | **NONE** — GPIO PWM (~25 kHz) + free tach | — | ✅ resolved |
+
+**Blower wiring (verify before trusting):** black = GND, red = +14.4 V, yellow = tach out, blue = PWM in. Do **not** H-bridge it; do **not** measure its winding resistance.
+
+**Key principle:** size drivers to **stall** current, not running. (OEM XV-11 drove the *wheels* with a ~2.8 A `A3950`, so DRV8871 at 3.6 A is correctly sized.)
+
+---
+
+## Buck converter / 5 V rail — PART ORDERED (⚠️ in transit)
+
+**Chosen: 7 A switching UBEC** (RC-style, 2–7S in, 5.25 V ±0.5 V out, 300 kHz, ~92% eff., shielded). Feeds Pi 4 + 2× ESP32 + LiDAR (~3.5 A sustained est.).
+
+- **⚠️ Setup step:** output is fixed ~5.25 V — **meter it first, confirm ~5.1–5.3 V, then wire the Pi.**
+- **⚠️ On arrival: confirm it's the 7 A variant** (multi-variant listing "FPV RC UBEC 5V 3A 5A 7A 15A").
+- **Rejected:** 3 A modules (brown out a Pi 4 under Nav2). XL4015 = bench-only. Pololu D36V50F5 correct but £38.
 
 ---
 
 ## Elegoo kit — what's useful here
 
-The user's Elegoo starter kit contains (relevant items only):
-
-- **L293D** (dual H-bridge, ~600 mA/ch) → **bench-test rig for wheel motors only.** Too weak for final use, esp. blower. Use it just to spin a wheel motor gently on the bench.
-- **ULN2003 stepper module** → not usable for these DC motors; ignore.
-- **PN2222 NPN transistor (×2) + diode rectifier (×2)** → exactly the classic LiDAR spin-motor drive circuit (transistor + flyback diode, PWM from ESP32). Already have what's needed to bring up the LDS motor.
-- **Thermistor** → handy reference when mapping the battery's 6-pin connector.
-- UNO R3, breadboard, jumpers, sensors, etc. → general bench use.
+- **L293D** (dual H-bridge, ~600 mA/ch) → step-1 toolchain proof only (now done). Too weak for final use.
+- **PN2222 NPN (×2) + flyback diode (×2)** → LiDAR spin-motor drive circuit. Diodes also cover the side-brush MOSFET flyback if the Gravity module lacks one.
+- **Thermistor** → reference when mapping the battery 6-pin connector.
+- UNO R3, breadboard, jumpers, sensors → general bench use.
 
 ---
 
@@ -81,101 +111,110 @@ The user's Elegoo starter kit contains (relevant items only):
 
 **Already have:** Pi 4, soldering iron+solder, multimeter, breadboard, Arduino/Elegoo kit.
 
-**Ordered (arriving ~next week):**
-- 2× ESP32 WROOM-32 (USB-C, CH340C, dual-core, 4 MB flash) — real-time co-processor
-- 8-ch 24 MHz logic analyzer (PulseView/sigrok) — decode LDS 2.2 packets + encoders
-- Heat-shrink assortment (2:1)
-- Dupont jumper assortment
+**Arrived 2026-08-06:**
+- ✅ **2× ESP32 WROOM-32 (USB-C, CH340C)** — one flashed with step-1 firmware, on the bench.
+- ✅ **2× Adafruit DRV8871 (ADA3190)** — drive wheels.
+- ✅ **1× Cytron MD13S (SKU 106189)** — roller brush.
+- ✅ **1× DFRobot Gravity MOSFET Power Controller** — side brush.
+- ✅ **Speaker amp** (PAM8302-class class-D mono) — rear speaker audio cues.
 
-**Ready to buy (wheels resolved):**
-- **2× DRV8871 motor driver module** (single H-bridge each; specs to confirm on listing: 3.6 A peak, 6.5–45 V in). For the drive wheels. ✅ Spec locked. Ideally order together with the brush driver once the brush is measured.
+**→ The whole power stage is now in hand. Build step 2 is unblocked.**
+
+**Ordered (still arriving):**
+- 8-ch 24 MHz logic analyzer (PulseView/sigrok) — decode LDS 2.2 + encoders. **Gates LiDAR (step 3).**
+- **1× 7 A switching UBEC** (eBay `26-14963-25714`, £6.60, ETA **10–17 Aug**, slowest part). ⚠️ confirm 7 A + meter to ~5.25 V before wiring the Pi. **Not on critical path** (bench is USB-powered).
+- Heat-shrink assortment, Dupont jumper assortment.
+
+**No longer needed:**
+- ~~JST ZH pigtail for the cliff sensor~~ — the harness was **cut** and the sensor keeps its native mated 5-pin plug as a permanent pigtail. (A JST kit is still handy for encoder/tacho/battery plugs — pitches TBD.)
 
 **On hold until measured / confirmed:**
-- Buck converter — **spec LOCKED:** input starts below 12 V (e.g. 6–24 V in), **5 V @ ≥5 A** out; avoid car-type fixed-12 V modules. Search `LM2596 buck converter 5V 5A`. Can buy anytime.
-- Brush driver (1× BTS7960 or MOSFET module) — **blocked on brush winding-resistance measurement.**
-- JST connector kit — blocked on measuring harness plug pitch.
-- Logic level shifter — only if a kept sensor is 5 V logic.
-- T10 Torx long-reach driver — for remaining recessed case screws (user confirmed screws are T10). Optional but likely useful.
-- Standoffs/mounts — blocked on measuring free internal space.
+- Logic level shifter — **cliff/wall sensors resolved (3.3 V, none needed)**; only if the encoders / roller tacho turn out 5 V logic (TBD).
+- JST kit for encoder/tacho/battery plugs — blocked on measuring those pitches.
+- T10 Torx long-reach driver — recessed case screws (optional).
+- Standoffs/mounts — blocked on measuring free internal space + thermal plan.
 
 ---
 
 ## NEXT ACTIONS (resume here)
 
-1. **[Immediate, next session] Measure the roller brush winding resistance** — the last unknown current, and the final gate on the driver order.
-   - `905-0460-RoHS`, slightly different motor from the wheels. User plans to photograph it first, then measure.
-   - Method (proven on the wheels): Ω 200 range, subtract the `0.1 Ω` lead resistance, **alligator clips across the two motor terminals**, rotate → stop → settle → read, take the lowest *stable* value. `stall ≈ 14.4 V ÷ R`.
-   - Result picks the brush driver: **≤ ~1.5–2 A → MOSFET module; higher → BTS7960.**
-2. **[Immediate] Count the wheel harness wires** — 6 = quadrature encoder (direction-aware, good); 5 = single channel (direction-blind, matters for odometry and slam_toolbox). Then use continuity mode to identify which two wires go to the motor posts and label them. (Chassis was reassembled at end of last session — will need reopening. **Gotcha: the wheel axle screw is reverse-threaded — lefty-tighty, righty-loosey.** If it feels like it's tightening as you loosen, you're going the wrong way.)
-3. **[Immediate] Confirm the blower has 4 wires, not 2** — 4 confirms the no-driver conclusion; 2 would put a MOSFET/BTS7960 back on the shopping list.
-4. **[Once brush measured] Place the driver order in one parcel** — 2× DRV8871 (wheels, confirmed) + brush driver (MOSFET or BTS7960, per measurement).
-5. **[Next week, when parts arrive]**
-   - Build order step 1: ESP32 + L293D (or final driver) → drive one wheel from a serial command.
-   - LiDAR bring-up: power LDS, drive spin motor (PN2222 + diode circuit), clip logic analyzer on `J2` data line, **confirm LDS 2.2 packet format vs documented XV-11 format** (the one remaining LiDAR unknown).
-6. **[Anytime] Buy the buck converter** — spec is locked.
-7. **[Before wiring] Map the battery 6-pin connector** — identify power vs thermistor/sense pins (multimeter; thermistor from Elegoo kit as reference).
+**✅ DONE this session (2026-08-06): switches + cliff/wall sensor characterised.** Bumper ×4 = NO, LOW = hit. Wheel-drop = NO, LOW = lifted. Cliff + wall sensor = `LOUIE DRP 290-1023`, ~3.3 V analog reflectance, native ADC, host-strobed, ≥2 sensors, same part for both — see confirmed-facts table.
+
+1. **[TOP PRIORITY — doable NOW, newly unblocked] Build step 2 — encoders → odometry.** Wire a **real** Neato wheel motor + a **DRV8871** (off the 14.4 V battery — the L293D can't take the ~2 A stall), drive it from the existing serial protocol, then read the **quadrature encoder (A/B)** into the ESP32 for distance + direction. Fat, easy wires — no fiddly connectors. This is the real-hardware version of what step 1 proved on a stand-in, and the drivers are finally here. **Do this first.**
+2. **[Quick, ~10 min, do when convenient] Finish the cliff-sensor pinout functionally.** Power the sensor: **red → 3.3 V, black → GND**; then tie each of **brown/yellow/green** high through a resistor while watching the emitter window **through a phone camera** (IR shows as a purple/white glow) → that's the emitter-drive wire; the remaining wire read on the ADC is the signal. Resolves the last residual. (Not blocked on anything — just wasn't worth grinding with a meter.)
+3. **[Also open now] Encoder / roller-tacho Vcc.** While on the bench with the wheel motor, meter the encoder + roller-tacho supply voltage (3.3 vs 5 V) → decides level-shifter need on those signal lines.
+4. **[When logic analyzer arrives] LiDAR bring-up:** power the LDS, drive spin motor (PN2222 + diode), clip analyzer on `J2`, confirm LDS 2.2 packet format vs documented Piccolo/XV-11.
+5. **[Before wiring power] Map the battery 6-pin connector** — power vs thermistor/sense (thermistor from Elegoo as reference).
+6. **[When UBEC arrives, ETA 10–17 Aug] Power rail:** confirm 7 A variant + meter to ~5.25 V before wiring the Pi.
+7. **[When board removed] Measure internal mounting space + plan cooling** — see thermal risk below. Also count the full set of cliff sensors (≥2 confirmed; front corners + centre TBD).
+
+**🗣️ QUEUED FOR DISCUSSION (not yet explored):**
+- **Charging** — how the D10 charges (dock **contact** charging, ~19.5 V at the dock — clarify; user once said "wireless"), and how to replicate it. Related to the battery 6-pin connector (action 5).
+- **Speaker integration detail** — amp now in hand; ESP32 DAC wiring, what cues to play. Nice-to-have.
+- **Voice control via onboard mic array (Phase 2+)** — `HK-ARRAY MIC-V1.1` USB mic array (UAC, driverless on the Pi; real connector is a 5-pin header carrying USB lines). Plan: `wyoming-satellite` on the Pi → HA Assist (STT→intent→TTS) → vacuum entity command → Nav2. Caveats: too loud to voice-control while cleaning (docked/idle only); named zones need SLAM/Nav2 up first (slot after steps 5–6 of build order); extra always-on process → thermal budget; mic ports need an air path (mount up top). Photo: `microphone-array.jpg`.
 
 ---
 
 ## Build order (for reference)
 
-1. ESP32 + one motor driver → drive a single wheel from serial. (Toolchain proof.)
-2. Add encoders → odometry readings.
-3. LiDAR bring-up → power, spin, capture `J2`, confirm/adapt packet decoder.
-4. Bare-bones MQTT bridge → HA `start` drives robot forward. (Proves full HA→Pi→ESP32→motor pipeline before SLAM.)
-5. slam_toolbox + Nav2 → mapping, localization, coverage. (The 80%; Nav2 tuning is the time-sink.)
+1. ✅ **DONE (2026-08-06)** — ESP32 + L293D + stand-in motor → serial drive with PWM speed + direction. Toolchain proven.
+2. Add encoders → odometry. **← next real hardware milestone; drivers have ARRIVED, so this is now unblocked and top of the list.**
+3. LiDAR bring-up → power, spin, capture `J2`, confirm/adapt packet decoder. (Waits on logic analyzer.)
+4. Wire the digital sensors (bump ×4, wheel-drop) + cliff/wall ADC → safety inputs. (Switches + cliff/wall already characterised; cliff emitter-vs-signal pin is a 10-min functional test here.)
+5. Bare-bones MQTT bridge → HA `start` drives robot forward. (Proves full HA→Pi→ESP32→motor pipeline before SLAM.)
+6. slam_toolbox + Nav2 → mapping, localization, coverage. (Nav2 tuning is the time-sink.)
 
 ---
 
 ## Open questions / risks
 
-- **i.MX 8M reuse fork — RESOLVED (2026-08-04): reuse is NOT viable → proceed with the Pi transplant.** **Three independent community projects all draw the line right below the D10** (community term: **"gen4"**): (1) OpenNeato/renjfk supports D3–D7, excludes D8–D10 ("different board, password-locked serial port"); (2) brainslug/"fang of vacuula" does gen2/gen3, says gen4 is "a completely different board, chip and firmware — cannot interface with directly"; (3) 94-psy got a D7 working then suspended. Plus Neato firmware is encrypted/signed and i.MX HABv4 secure boot blocks unsigned images. **No public root path exists for the D10, and even the "keep the board, talk over serial" shortcut is closed — full transplant is the *only* path.** The SoC is a modest single-A53 SoloLite anyway (Pi 4 on hand is far stronger). Transplant now justified by the **locked boot chain** (correct), not "no OS" (wrong — there *is* a Linux brain). Sources in build doc + links below.
-- **i.MX 8M variant — RESOLVED** (`MIMX8MN1DVTJZAA` = Nano SoloLite, industrial; 1× A53 + 1× M7, no GPU/NPU). First digit hard to read (`1` SoloLite vs `6` Quad) but moot now — reuse is off the table regardless.
-- **UART header (bonus from research):** OpenNeato documents the D3–D7 debug port as 4-pin **`RX / 3.3V / TX / GND`**, **3.3 V logic**. The D10's 4-pin header (bottom of board, see `shielding-removed.jpg`) is likely the same convention — noted only for optionally *watching* the locked boot log (blog material); needs a USB-TTL adapter or the Pi's UART.
-- **Roller brush stall current** — **TBD, the last gate on the driver order.** (Wheels **resolved**: ~2.1 A / ~2.4 A → DRV8871 ×2. Blower **resolved**: 2.0 A, no driver.)
-- Blower wire count — confirm 4 (PWM fan) vs 2 (plain brushed motor).
-- Encoder channel count — 6 harness wires = quadrature; 5 = single channel, direction-blind.
-- Encoder supply voltage (3.3 V vs 5 V) — determines whether a level shifter is needed.
-- LDS 2.2 packet format — **largely SOLVED by research (2026-08-04).** The Neato LDS ("Piccolo LDS") protocol is fully documented (ssloy repo): **8N1, 3.3 V, 115200 baud; 90 packets/rev × 22 bytes × 4 readings = 360 readings/rev (1980 bytes)**; each reading has distance + signal-strength + 2 warning flags. Spin motor is **host-driven PWM, closed-loop on the RPM reported in the data** (open-loop ~3.3 V @ ~60 mA ≈ 240 rpm; closed-loop recommended). Our LDS 2.2 is this same family — expect a match or trivial tweak; just confirm on capture. Data connector `Red +3.3/5V · Brown RX · Orange TX · Black GND`, motor connector `Red PWR · Black GND`.
+- **i.MX 8M reuse — RESOLVED: not viable.** Three community projects all draw the line right below the D10: OpenNeato/renjfk (D3–D7); brainslug (gen2/3, "gen4… cannot interface directly"); 94-psy got a D7 working then suspended. Firmware encrypted/signed + i.MX HABv4 secure boot. **Full transplant is the only path.**
+- **Cliff / wall sensor** — **largely RESOLVED 2026-08-06.** Vcc ~3.3 V (native ADC, no shifter); analog reflectance; host-strobed; ≥2 sensors gang-of-2; wall sensor is the same part. Residual: full sensor count (pending full undercarriage) + which of brown/yellow/green is emitter-drive vs signal (10-min functional test — action 2).
+- **Encoder / roller-tacho supply voltage** — **TBD** (3.3 V vs 5 V). Determines level-shifter need on those signal lines. Meter during step 2.
 - Battery 6-pin pinout — **TBD** before connecting.
-- Sensor logic levels (bumper/cliff/wall/drop) — **TBD** when wiring.
-- Internal mounting space for Pi+ESP32 — **TBD** once old board fully removed.
-- **⚠️ THERMAL (NEW risk from prior art, 2026-08-04)** — the closest analogous project (`94-psy/OpenNeato`, a D7→SBC+ROS2+Nav2 build) was **SUSPENDED INDEFINITELY** partly because its **SBC cooked at 85 °C+** (thermal throttling) inside the sealed chassis with no room for a heatsink/fan. **The Pi 4 runs hotter than the Radxa Zero 3W they used** — so cooling/ventilation is a real design constraint, not an afterthought. Plan airflow, a heatsink, or a cooler board (Pi Zero 2 W?) when mounting. Ties into the mounting-space item above.
-- **✅ Architecture validated by that same failure** — 94-psy's *other* fatal issue was driving Neato's **factory serial-diagnostic port** for real-time control → buffer overflows, MCU crashes, dropped connections. **Our design sidesteps this entirely:** we gut Neato's board and run the real-time loop on our **own ESP32 (micro-ROS)**, not Neato's serial console. Their dead-end is evidence our Pi-4-brain + ESP32-real-time split is the right call.
-- Nav2 tuning — known hard/fiddly (documented, big community).
+- Bump/wheel-drop switch logic — **RESOLVED** (both NO, active-low, LOW = event).
+- Internal mounting space for Pi+ESP32 — **TBD** once old board removed.
+- **⚠️ THERMAL** — closest prior art (`94-psy/OpenNeato`, D7→SBC+ROS2+Nav2) was **SUSPENDED** partly because its SBC cooked at **85 °C+** inside the sealed chassis. The Pi 4 runs *hotter* → cooling is a design constraint, not an afterthought.
+- **⚠️ POWER** — a 3 A 5 V rail browns out a Pi 4 under Nav2 (reboots / SD corruption). Hence the 7 A UBEC.
+- **✅ Architecture validated by that failure** — 94-psy's other fatal flaw was driving Neato's factory serial-diagnostic port for real-time control. Our design guts that board and runs the real-time loop on our own ESP32 (micro-ROS) → sidesteps it.
+- LDS 2.2 packet format — largely solved by research; confirm on capture.
+- Nav2 tuning — known hard/fiddly.
 - "Lost" status detection (localization loss) — least clean signal to detect.
 
 ---
 
 ## Reference links
 
-- Neato XV-11 / Piccolo LDS protocol (full packet format + motor control) — https://github.com/ssloy/neato-xv11-lidar
-- **94-psy/OpenNeato** — closest prior art (D7 → SBC + ROS 2 + Nav2). **Suspended**; read its README for the thermal + serial-bottleneck post-mortem — https://github.com/94-psy/OpenNeato
-- **renjfk/OpenNeato** — D3–D7 cloud replacement (keeps Neato board, talks over serial). Debug-port pinout `RX/3.3V/TX/GND` — https://github.com/renjfk/OpenNeato
-- Philip2809/neato-brainslug ("fang of vacuula") — ESP-on-serial local control for **gen2/gen3** Neatos. Reviewed 2026-08-04: states **gen4 (= D8/D9/D10) is "a completely different board, chip and firmware, cannot interface with directly"** — a *third* independent confirmation the D10 is locked/uncharted and full transplant is the only path — https://github.com/Philip2809/neato-brainslug
-- XV-11 LDS on Raspberry Pi (C++, motor control) — https://github.com/berndporr/neato-xv11-lidar
-- XV-11 LIDAR tutorial (ev3dev) — https://www.ev3dev.org/docs/tutorials/using-xv11-lidar/
-- OpenNeato (D3–D7 context) — https://github.com/renjfk/OpenNeato
+- Neato XV-11 / Piccolo LDS protocol — https://github.com/ssloy/neato-xv11-lidar
+- **94-psy/OpenNeato** — closest prior art (D7 → SBC + ROS 2 + Nav2). Suspended; thermal + serial post-mortem — https://github.com/94-psy/OpenNeato
+- **renjfk/OpenNeato** — D3–D7 cloud replacement; debug-port pinout `RX/3.3V/TX/GND` — https://github.com/renjfk/OpenNeato
+- Philip2809/neato-brainslug — gen2/gen3 local control; confirms gen4 (D8/D9/D10) locked — https://github.com/Philip2809/neato-brainslug
+- **Neato drop/cliff sensor (290-1023 LOUIE DRP) discussion** — Robot Reviews "D5 Cliff Sensors Not Responding": https://robotreviews.com/chat/viewtopic.php?t=22133 ; vendor confirming 2×-set: https://casello.de/products/neato-botvac-d-connected-2x-drp-sensor-kabel-290-1023-louie-drop-rev2
+- XV-11 LDS on Raspberry Pi (C++) — https://github.com/berndporr/neato-xv11-lidar
 - ROS 2 Nav2 — https://docs.nav2.org
 - slam_toolbox — https://github.com/SteveMacenski/slam_toolbox
 - micro-ROS — https://micro.ros.org
 - HA MQTT Vacuum — https://www.home-assistant.io/integrations/vacuum.mqtt/
+- Cytron MD13S (roller driver) — Pi Hut SKU 106189, Cytron lib: https://github.com/CytronTechnologies/CytronMotorDriver
 
 ---
 
 ## Photos captured so far (for the GitHub writeup)
 
 - Battery label (14.4 V 4S2P) + 6-pin connector
-- Mainboard both angles (NXP LPC51U68 visible, RF shield, USB-C, JST connectors)
-- **RF shield removed** (`shielding-removed.jpg`) + chip close-ups revealing the Linux brain: `board-imx8m-soc.jpg` (i.MX 8M SoC + PCA9450 PMIC), `board-nanya-dram-and-lpc51u68.jpg` (DDR3 + the LPC51U68 in shot together), `board-kingston-emmc.jpg` (4 GB eMMC), `board-soc-cluster-overview.jpg`
+- Mainboard both angles + RF shield removed (`shielding-removed.jpg`) + chip close-ups: `board-imx8m-soc.jpg`, `board-nanya-dram-and-lpc51u68.jpg`, `board-kingston-emmc.jpg`, `board-soc-cluster-overview.jpg`
 - Button/UI board (TP1–TP22)
-- **LiDAR LDS 2.2 base board** — underside (silkscreen `290-1044 REV 4`, `J2 MAIN`, `J3 MOTOR`) + chip side (LM393)
+- LiDAR LDS 2.2 base board — underside (`290-1044 REV 4`, `J2 MAIN`, `J3 MOTOR`) + chip side (LM393)
 - Elegoo kit contents sheet
-- Drive wheel motor side-on (`260-0016 14.4V`) + encoder board close-ups (`LEGO WHEEL ENCODER ASY: 915-1055`, `STD-3`)
-- **Left motor winding-resistance measurement in progress** (`measure-left-motor-winding-resistance.jpg`) — probes on the two chunky posts flanking the encoder disc
-- **Multimeter panel** (`multimeter.jpg`) — MS8233A, shows the `MAX 10A FUSED` label
-- Roller brush motor in situ (`905-0460-RoHS 14.4VDC`)
-- Blower label (EVERFLOW `F121225BU`, `DC14.4V 2.0AMP`)
-- Mainboard in situ with harness attached
+- Drive wheel: `left-wheel-motor.jpg`, `left-wheel-motor-2.jpg`, `left-wheel-motor-wiring.jpg`, `left-wheel-chassis.jpg`, `left-wheel-chassis-with-motor-and-wiring.jpg`, `right-wheel-chassis-connected.jpg`; encoder close-ups (`LEGO … 915-1055`, `STD-3`)
+- **Left motor winding-resistance measurement** (`measure-left-motor-winding-resistance.jpg`)
+- Multimeter panel (`multimeter.jpg`)
+- Roller brush motor (`roller-brush-motor.jpg`, `roller-motor.jpg`) + board/top-down (`board-and-topdown-spinning-brush-motor.jpg`)
+- **Side brush motor** (`brush-motor.jpg`) — 2-wire small can, EMI cap
+- Blower label (EVERFLOW `F121225BU`, `DC14.4V 2.0AMP`) + `blower-motor.jpg`
+- **Sensors (2026-08-05):** front bumper switch (`front-bumper-switch.jpg`, `290-0056`), wheel-arch dead-man's microswitch (`wheel-arch-dead-mans-switch.jpg`, `DT-08`), under-carriage cliff sensor (`under-carriage-sensor.jpg`, `LOUIE DRP 290-1023`)
+- **Cliff sensor deep-dive (NEW 2026-08-06):** `cliff-sensor-front.jpg` (two emitter/detector windows), `cliff-sensor-connector.jpg` (5-wire JST + silkscreen), `cliff-sensor-harness-clamp.jpg` (ferrite/strain-relief clamshell + white plug), `cliff-sensor-harness-cut-tails.jpg` (harness cut, native plug kept as pigtail — hero shot for episode 12)
+- **Mic array (2026-08-05):** `HK-ARRAY MIC-V1.1` USB microphone array (`microphone-array.jpg`)
+- **Step 1 bench build (2026-08-06):** ESP32 pinout D25/D26/D27 (`esp32-devkit-pinout.jpg`), L293D on breadboard (`l293d-breadboard-step1.jpg`), **first motor + fan spinning** (`step1-first-motor-fan-test.jpg` — hero for episode 11)
 
-**Still to photograph:** roller brush motor terminals (for the next measurement); LiDAR turret top/laser module markings (optional — interface already known); internal space with mainboard removed; individual motor + sensor connectors close-up (for JST pitch sizing); **blower wire entry / connector close-up** (to settle the 4-wire question).
+**Still to photograph:** LiDAR turret top/laser module markings (optional); internal space with mainboard removed; individual connectors close-up (JST pitch sizing for encoder/tacho/battery); wheel-encoder + brush-tacho Vcc pins while metering; full undercarriage showing all cliff-sensor positions; cliff-sensor emitter glowing on a phone camera during the functional pinout test.
