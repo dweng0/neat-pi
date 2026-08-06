@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neato D10 — Power/Electrical Block Diagram (draft)</title>
+  <style>
+    body { background:#0d1117; color:#c9d1d9; font-family:system-ui,-apple-system,sans-serif;
+           max-width:1100px; margin:0 auto; padding:2rem 1.5rem; line-height:1.5; }
+    h1 { font-size:1.4rem; } h2 { font-size:1.05rem; color:#8b949e; margin-top:2rem; }
+    a { color:#58a6ff; }
+    .draft { display:inline-block; background:#9e6a03; color:#fff; font-size:.75rem;
+             padding:.15rem .5rem; border-radius:4px; letter-spacing:.04em; }
+    .mermaid { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:1rem; margin:1rem 0; }
+    ul { color:#c9d1d9; } code { background:#161b22; padding:.1rem .3rem; border-radius:4px; }
+    .note { color:#8b949e; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <p><a href="/">&larr; back to devlog</a></p>
+  <h1>Power / Electrical Block Diagram <span class="draft">DRAFT</span></h1>
+  <p class="note">First-pass power spine sketched in episode 13. Not final — the open decisions
+  below need resolving before this graduates to a proper schematic (schemdraw). Dashed lines = signal/control, solid = power.</p>
+
+  <pre class="mermaid">
+flowchart TB
+    DOCK["Dock contacts<br/>19.5V always-on"] -->|2-pin dock harness REUSED| CHG["CC/CV charger<br/>XL4015 buck<br/>19.5V in -> 16.8V, ~1.5A"]
+
+    subgraph PACK["Battery pack (reused OEM cells)"]
+        CELLS["Samsung INR18650-35E<br/>4S2P - 14.4V nom (12-16.8V)"]
+        BMS["4S BMS 40A<br/>common-port + balancer<br/>(DollaTek)"]
+        CELLS ---|"B+/B- + 3 balance taps"| BMS
+    end
+
+    CHG -->|charge into P+/P-| BMS
+    BMS -->|"P+/P-  (salvaged stranded wire)"| FUSE["Inline fuse<br/>20A ATO"]
+    FUSE --> DISC["Pack disconnect<br/>salvaged OEM connector"]
+    DISC --> BUS(["14.4V power bus"])
+
+    BUS --> UBEC["7A UBEC buck<br/>-> 5.1V rail"]
+    UBEC --> PI["Raspberry Pi 4<br/>ROS2 / Nav2"]
+    UBEC --> ESP["2x ESP32<br/>micro-ROS"]
+    UBEC --> LDS["LiDAR LDS 2.2"]
+
+    BUS --> DRV1["DRV8871"] --> WHLL["Wheel motor L"]
+    BUS --> DRV2["DRV8871"] --> WHLR["Wheel motor R"]
+    BUS --> CYT["Cytron MD13S"] --> ROLL["Roller brush"]
+    BUS --> MOS["MOSFET module"] --> SIDE["Side brush"]
+    BUS --> BLOW["Blower<br/>4-wire PWM, no driver"]
+
+    BUS -->|"10k+2k divider"| ADC["ESP32 ADC<br/>pack voltage / SoC"]
+
+    ESP -.PWM/DIR.-> DRV1
+    ESP -.PWM/DIR.-> DRV2
+    ESP -.PWM/DIR.-> CYT
+    ESP -.on/off.-> MOS
+    ESP -.PWM + tach.-> BLOW
+    ESP -.USB serial.-> PI
+    LDS -.UART.-> PI
+
+    classDef pwr fill:#3a2a12,stroke:#d79b00,color:#f0d9b5;
+    classDef logic fill:#12283a,stroke:#6c8ebf,color:#cfe2f3;
+    classDef sense fill:#16301a,stroke:#82b366,color:#d5e8d4;
+    class DOCK,CHG,CELLS,BMS,FUSE,DISC,BUS pwr;
+    class UBEC,PI,ESP,LDS logic;
+    class ADC sense;
+  </pre>
+
+  <h2>Open decisions before schemdraw</h2>
+  <ul>
+    <li><strong>Charger tie-in</strong> — into BMS <code>P+/P-</code> (pack side, as drawn) vs downstream of the fuse so charge current is fused too.</li>
+    <li><strong>Fuse placement</strong> — right at <code>P+</code> (protects everything) vs load-branch only.</li>
+    <li><strong>"Docked" sense</strong> — ESP32 reads the dock contacts vs the charger output (feeds the map-pose auto-dock plan).</li>
+    <li><strong>Common ground</strong> — all grounds (motors, logic, sense) tie to pack <code>-</code>; draw it explicitly.</li>
+  </ul>
+
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+  </script>
+</body>
+</html>
