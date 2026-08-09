@@ -30,8 +30,12 @@ The site (`site/`, live at **blog.housekeeper.systems**) is a **multi-serial blo
 learning is its own serial, **`learning-rust-on-the-robot`**, already registered in
 `site/src/lib/serials.ts`.
 
-- An **episode** = one post. Files live in `./blog/NN-title.md`, numbered continuously across the
-  *whole* blog (not per-serial) — take the highest `episode:` across all `./blog/*.md` and add 1.
+- An **episode** = one post. Episodes are numbered **per-serial, starting at 1** (NOT continuous
+  across the whole blog). This serial's next `episode:` = the highest `episode:` among `./blog/*.md`
+  that carry `serial: learning-rust-on-the-robot`, plus 1. Files live in `./blog/rust-NN-title.md`
+  (the `rust-` prefix keeps them grouped and avoids clashing with the Neato serial's `NN-` files in
+  the flat folder). Routes are keyed by filename, and prev/next nav is serial-scoped, so two
+  `episode: 1`s across different serials do not collide.
 - **These episodes MUST carry `serial: learning-rust-on-the-robot` in frontmatter.** Without it,
   they'd wrongly default to the Neato build serial.
 - Only touch `site/src/lib/serials.ts` if changing the serial's registration (already done); you
@@ -58,8 +62,9 @@ manufacture an episode from nothing.
 
 ## Step 2 — write the next episode → `./blog`
 
-1. **Find the next number.** List `./blog/*.md`, read frontmatter `episode:` values across all of
-   them, take highest + 1. Filename `NN-kebab-title.md` (zero-padded).
+1. **Find the next number.** List `./blog/*.md`, read frontmatter `episode:` values **only for
+   files carrying `serial: learning-rust-on-the-robot`**, take highest + 1 (per-serial, starts at
+   1). Filename `rust-NN-kebab-title.md` (zero-padded).
 
 2. **Frontmatter** (match existing episodes, plus the required `serial`):
    ```yaml

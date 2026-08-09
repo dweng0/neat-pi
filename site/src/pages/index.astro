@@ -5,11 +5,13 @@ import EpisodeCard from '../components/EpisodeCard.astro';
 import { SITE } from '../lib/site.ts';
 import { SERIALS, serialOf, STATUS_LABEL } from '../lib/serials.ts';
 
+// Sort across serials by date, not episode number — episode numbers restart per
+// serial (Ep 1 of a new serial isn't "older" than Ep 15 of another).
 const episodes = (await getCollection('episodes'))
   .filter((e) => e.data.status !== 'draft')
-  .sort((a, b) => a.data.episode - b.data.episode);
+  .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime() || b.data.episode - a.data.episode);
 
-const latest = [...episodes].reverse().slice(0, 3);
+const latest = episodes.slice(0, 3);
 const featured = SERIALS[0];
 const featuredCount = episodes.filter((e) => serialOf(e) === featured.slug).length;
 ---

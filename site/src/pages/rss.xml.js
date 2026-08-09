@@ -2,9 +2,11 @@ import rss from '@astrojs/rss';
 import { getCollection } from 'astro:content';
 
 export async function GET(context) {
+  // Newest first, by date — episode numbers restart per serial, so they don't
+  // order across serials.
   const episodes = (await getCollection('episodes'))
     .filter((e) => e.data.status !== 'draft')
-    .sort((a, b) => a.data.episode - b.data.episode);
+    .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime() || b.data.episode - a.data.episode);
 
   return rss({
     title: 'Neato D10 Brain Transplant',

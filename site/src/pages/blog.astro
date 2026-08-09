@@ -4,10 +4,11 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import EpisodeCard from '../components/EpisodeCard.astro';
 import { SITE } from '../lib/site.ts';
 
-// Newest first — the journal reads like a feed.
+// Newest first — the journal reads like a feed. Sort by date across serials, not
+// episode number (numbers restart per serial, so they don't order across them).
 const episodes = (await getCollection('episodes'))
   .filter((e) => e.data.status !== 'draft')
-  .sort((a, b) => b.data.episode - a.data.episode);
+  .sort((a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime() || b.data.episode - a.data.episode);
 ---
 <BaseLayout title={`Blog — ${SITE.brand}`} description={SITE.description}>
   <div class="wrap">
