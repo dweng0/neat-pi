@@ -48,9 +48,11 @@ oriented on the Rust thread fast, then get *into the code together by voice*. Th
 - **Don't write handoff/blog files in `cook-rs`.** Reading and briefing only; writing state back
   is `finish-up-rs`'s job. (Editing the user's *source code* during pairing is fine and expected —
   that's the whole point — but only when they ask.)
-- **The user is learning — don't just write their TODO bodies for them.** Default to guiding:
-  explain, hint, let them type. Write code for them only if they explicitly ask. When they're
-  stuck, nudge toward the answer rather than dropping the solution.
+- **The user is going deeper in Rust (experienced, not a beginner) — don't just write their TODO
+  bodies for them.** Default to guiding: explain, hint, let them type. Pitch it at someone who
+  knows the basics but wants to *earn* the deep stuff (borrows/lifetimes, `no_std`, peripherals) —
+  don't over-explain fundamentals, do slow down on the hard concepts. Write code for them only if
+  they explicitly ask. When they're stuck, nudge toward the answer rather than dropping the solution.
 - **Never invent state.** If the handoff doesn't say a milestone is confirmed, it isn't. Flashing
   to hardware is the confirmation bar — "compiles" is not "works on the bot."
 - **Toolchain reminder:** builds need `. $HOME/export-esp.sh` sourced and `~/.cargo/bin` on PATH;

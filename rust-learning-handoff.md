@@ -11,10 +11,16 @@
 ## Context
 
 The Neato's ESP32 co-processor firmware exists in C++ (`esp32-firmware/`, known-good, drives
-the wheel motor via a DRV8871). As a way to learn Rust, we're porting it to bare-metal `no_std`
-Rust in a **sibling** project, `esp32-firmware-rs/`, leaving the C++ untouched as a fallback.
-The learning is documented publicly as its own blog serial (see below), separate from the main
-brain-transplant build story.
+the wheel motor via a DRV8871). The user has written Rust before but always at arm's length
+(`String` everywhere, `.clone()`/`.unwrap()` to appease the compiler); this thread is about going
+*deeper* — earning the ownership model, working `no_std`, understanding *why* the rules bite. The
+vehicle is porting the firmware to bare-metal `no_std` Rust in a **sibling** project,
+`esp32-firmware-rs/`, leaving the C++ untouched as a fallback. Documented publicly as its own blog
+serial (see below), separate from the main brain-transplant build story.
+
+> **Framing note:** treat the user as an experienced dev going deep, NOT a raw beginner. Don't
+> over-explain basics they know; do slow down on the deep stuff (borrows/lifetimes, `no_std`,
+> peripherals). The serial's public premise matches this ("going deeper on purpose").
 
 **Crate layout (as of 2026-08-09):** the pure, hardware-free logic has been split out of the
 firmware into its own crate so it can be unit-tested on the host:

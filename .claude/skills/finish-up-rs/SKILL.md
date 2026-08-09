@@ -84,8 +84,10 @@ manufacture an episode from nothing.
 
 3. **Voice — match `./blog/*.md` (read one first so tone carries):**
    - **First person, past tense, plain-spoken.** "I stared at the borrow error for ten minutes…"
-   - **Honest about the struggle.** A beginner learning in the open — the confusions, the wrong
-     turns, the moment it clicked. Don't present it as if you knew it all along.
+   - **Honest about the struggle.** An experienced dev going *deeper* in the open (not a raw
+     beginner) — the concepts that finally clicked, the borrow/lifetime fights, the wrong turns,
+     the moment a thing you thought you knew actually landed. Don't fake mastery you didn't have,
+     but don't play dumb about fundamentals you clearly know either.
    - **Teach one idea per episode.** Show the actual code — the `todo!()` you filled, the error the
      compiler gave, the fix. Keep code snippets short and real.
    - **Specs/APIs as inline `code`.** `no_std`, `heapless::String`, `Command::Forward(u8)`, `LEDC`.
