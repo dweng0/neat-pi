@@ -35,10 +35,11 @@ export const SERIALS: Serial[] = [
     title: 'Learning Rust on the Robot',
     tagline: 'A learning serial',
     blurb:
-      "The Neato's ESP32 firmware started life in C++. I'm relearning it in Rust — bare-metal, " +
-      'no_std, on real hardware — and rebuilding the motor control as a reusable driver crate. ' +
-      'A beginner working it out in the open: toolchain pain, borrow-checker fights, and the ' +
-      'refactor from "it works" to "it\'s a library".',
+      "The Neato's ESP32 firmware started life in C++. I'm rebuilding it in Rust — bare-metal, " +
+      'no_std, on real hardware — and turning the motor control into a reusable driver crate. ' +
+      "I've written Rust before, but always at arm's length; this is me going deeper on purpose, " +
+      'in the open: toolchain pain, borrow-checker fights, and the refactor from "it works" to ' +
+      '"it\'s a library".',
     status: 'ongoing',
   },
 ];

@@ -9,6 +9,8 @@ heroPhoto: esp32-devkit-pinout.jpg
 serial: learning-rust-on-the-robot
 ---
 
+A word on what this serial is, since it's the first one. I'm not new to Rust — I've written a fair bit, worked through the book, shipped a few small things. But always at arm's length: `String` everywhere, a `.clone()` whenever the borrow checker grumbled, an `.unwrap()` to make the red squiggle go away. What I've never done is understand it *properly* — earn the ownership model instead of talking my way around it, work without the standard library, feel *why* the rules bite where they do. So I'm porting the Neato's ESP32 firmware — currently known-good C++ — to bare-metal `no_std` Rust, on the real hardware, as an excuse to go deep. Same behaviour, rebuilt the hard way on purpose, so the concepts actually land instead of sliding off. This is episode one, and it's already taught me something I thought I understood.
+
 The C++ firmware already does this. It reads a byte, stashes it, and when it sees a newline it hands you the whole line to parse. Fifteen lines, no drama. I sat down to write the same thing in Rust — a `feed` function on a little `LineReader` — and got stuck on something so small I was almost embarrassed to admit it: I couldn't work out how to give the finished line back.
 
 Here's the shape. On each byte, if it's a `\n` the line is done, so I return it and empty the buffer for the next one. My first instinct:
