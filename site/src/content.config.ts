@@ -16,6 +16,9 @@ const episodes = defineCollection({
     teaser: z.string().optional(),
     heroPhoto: z.string().optional(),
     seeAlso: z.array(z.string()).optional(),
+    // Which serial this episode belongs to. Omitted on existing files → defaults to the
+    // Neato build (see DEFAULT_SERIAL in src/lib/serials.ts). Future serials set this explicitly.
+    serial: z.string().optional(),
   }),
 });
 

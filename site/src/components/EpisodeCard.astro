@@ -1,0 +1,35 @@
+---
+import { Image } from 'astro:assets';
+import type { CollectionEntry } from 'astro:content';
+import { getPhoto } from '../lib/photos.ts';
+import { getSerial, serialOf } from '../lib/serials.ts';
+
+interface Props {
+  episode: CollectionEntry<'episodes'>;
+}
+const { episode } = Astro.props;
+const d = episode.data;
+const serial = getSerial(serialOf(episode));
+const img = getPhoto(d.heroPhoto);
+
+const fmt = (date?: Date) =>
+  date ? date.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase() : '';
+---
+<a class="card" href={`/episodes/${episode.id}/`}>
+  {img ? (
+    <div class="card__media">
+      <span class="card__pill">{serial?.title ?? 'Episode'}</span>
+      <Image src={img} alt={d.title} widths={[400, 800]} sizes="(max-width: 40rem) 100vw, 400px" />
+    </div>
+  ) : (
+    <div class="card__media noimg">
+      <span class="card__pill">{serial?.title ?? 'Episode'}</span>
+      <span class="ep-big">{d.episode}</span>
+    </div>
+  )}
+  <div class="card__body">
+    <p class="card__date date">{fmt(d.sessionDate ?? d.pubDate)} · Ep. {d.episode}</p>
+    <h3 class="card__title">{d.title}</h3>
+    {d.teaser && <p class="card__teaser">{d.teaser}</p>}
+  </div>
+</a>

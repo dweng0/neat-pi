@@ -13,13 +13,19 @@ const { Content } = await render(entry);
 const title = refTitle(entry.id, entry.body);
 const kind = refKind(entry.id);
 ---
-<BaseLayout title={`${title} — Neato D10 Reference`}>
-  <p class="eyebrow">Reference</p>
-  <span class={`badge ${kind}`}>{kind}</span>
-  <p class="meta-line" style="margin-top:1rem;">
-    Living document — the current source of truth. (Episodes are snapshots; this stays current.)
-  </p>
-  <article class="prose">
-    <Content />
-  </article>
+<BaseLayout title={`${title} — Housekeeper Systems Reference`}>
+  <div class="wrap">
+    <article class="article">
+      <p class="crumb"><a href="/blog/">Blog</a> <span class="sep">/</span> Reference</p>
+      <p class="hand">reference</p>
+      <h1>{title}</h1>
+      <p class="meta-line">
+        <span class={`badge ${kind}`}>{kind}</span>
+        <span class="dot">·</span> Living document — the current source of truth. Episodes are snapshots; this stays current.
+      </p>
+      <div class="prose">
+        <Content />
+      </div>
+    </article>
+  </div>
 </BaseLayout>

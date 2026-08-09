@@ -1,0 +1,36 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE } from '../lib/site.ts';
+---
+<BaseLayout title={`About — ${SITE.brand}`} description={`About ${SITE.brand}.`}>
+  <div class="wrap">
+    <article class="article">
+      <p class="hand">the colophon</p>
+      <h1>About</h1>
+      <div class="prose">
+        <p>
+          <strong>{SITE.brand}</strong> is {SITE.tagline} — long-form build stories, documented
+          episode by episode as they actually happen. The wrong turns, the dead ends, and the
+          measurements that wouldn't sit still all stay in.
+        </p>
+        <p>
+          Each <em>serial</em> follows one build from bricked to working. The first is a Neato D10
+          robot vacuum, gutted after the company went bust and the cloud went dark, and rebuilt as
+          an open, locally-controlled ROS 2 robot. More serials will follow.
+        </p>
+        <p>
+          Alongside the episodes are <em>reference</em> docs — living documents kept current as the
+          build changes, unlike the episodes, which are snapshots in time.
+        </p>
+        <h2>Colophon</h2>
+        <p>
+          Built with <a href="https://astro.build" target="_blank" rel="noopener">Astro</a>. Type is
+          Rubik, Inter, and DM Mono. Photos are compressed to webp at build time. The theme is a
+          nod to the “August” portfolio theme. Source on
+          <a href={SITE.githubUrl} target="_blank" rel="noopener">GitHub</a>; follow along via
+          <a href="/rss.xml">RSS</a>.
+        </p>
+      </div>
+    </article>
+  </div>
+</BaseLayout>

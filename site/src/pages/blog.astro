@@ -1,0 +1,24 @@
+---
+import { getCollection } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import EpisodeCard from '../components/EpisodeCard.astro';
+import { SITE } from '../lib/site.ts';
+
+// Newest first — the journal reads like a feed.
+const episodes = (await getCollection('episodes'))
+  .filter((e) => e.data.status !== 'draft')
+  .sort((a, b) => b.data.episode - a.data.episode);
+---
+<BaseLayout title={`Blog — ${SITE.brand}`} description={SITE.description}>
+  <div class="wrap">
+    <header class="page-head">
+      <p class="hand">field notes</p>
+      <h1>The Log</h1>
+      <p class="lede">{SITE.description}</p>
+    </header>
+
+    <div class="grid">
+      {episodes.map((e) => <EpisodeCard episode={e} />)}
+    </div>
+  </div>
+</BaseLayout>
