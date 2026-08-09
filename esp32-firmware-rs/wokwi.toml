@@ -1,0 +1,16 @@
+# Wokwi simulator configuration for esp32-firmware-rs.
+# Docs: https://docs.wokwi.com/vscode/project-config
+#
+# Paths are relative to this file (the project root).
+# The ELF is a supported firmware type for the ESP32 family, so we point both
+# `firmware` and `elf` at the debug ELF produced by `cargo build`.
+# Run `cargo build` before starting the simulator so this file exists.
+
+[wokwi]
+version  = 1
+firmware = 'target/xtensa-esp32-none-elf/debug/esp32-firmware-rs'
+elf      = 'target/xtensa-esp32-none-elf/debug/esp32-firmware-rs'
+
+# Expose a GDB server so a debugger (VS Code, or nvim-dap / gdb over the CLI)
+# can attach for step-debugging in the simulator. This is the no-JTAG-probe path.
+gdbServerPort = 3333

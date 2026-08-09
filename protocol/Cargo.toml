@@ -1,0 +1,7 @@
+[package]
+edition = "2024"
+name    = "protocol"
+version = "0.1.0"
+
+[dependencies]
+heapless = "0.8"

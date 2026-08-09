@@ -1,9 +1,13 @@
-// Neato D10 brain-transplant — ESP32 co-processor: STEP 1 — DRIVE ONE MOTOR
+// Neato D10 brain-transplant — ESP32 co-processor: STEP 2 — DRIVE A REAL WHEEL MOTOR
 //
-// Proves the control chain: serial command -> ESP32 -> L293D H-bridge -> motor,
-// with speed (PWM) and direction control. Use a SMALL bench motor (Elegoo kit),
-// NOT a real Neato wheel motor — the L293D can't take the wheel's ~2 A stall.
-// Real wheels come later on the DRV8871s.
+// Proves the control chain on real hardware: serial command -> ESP32 -> DRV8871
+// H-bridge -> Neato 260-0016 wheel motor, with speed (PWM) and direction control.
+// The DRV8871 (3.6 A peak, adj. current limit) CAN take the wheel's ~2.4 A stall,
+// unlike the L293D used for the step-1 toolchain proof.
+//
+// Power: motor rail (12 V from the bench PSU) goes to the DRV8871 VM screw
+// terminal, NOT through the ESP32. The ESP32 stays USB-powered. The DRV8871 GND
+// MUST tie to ESP32 GND (common ground) or the IN1/IN2 logic floats.
 //
 // Serial protocol (115200 baud, newline-terminated):
 //   F <0-255>   forward at PWM duty   (e.g. "F 180")
@@ -12,57 +16,67 @@
 //   B           brake (short the motor)
 //   (bare number, e.g. "150", is treated as forward at that duty)
 //
+// DRV8871 truth table (no EN pin — PWM rides directly on one input):
+//   IN1     IN2     result
+//   PWM     LOW     forward at duty
+//   LOW     PWM     reverse at duty
+//   LOW     LOW     coast (stop)
+//   HIGH    HIGH    brake (both outputs low, motor shorted)
+//
 // Wiring:
-//   GPIO25 -> L293D pin 1  (EN1,2  = PWM speed)
-//   GPIO26 -> L293D pin 2  (IN1    = direction)
-//   GPIO27 -> L293D pin 7  (IN2    = direction)
+//   GPIO26 -> DRV8871 IN1
+//   GPIO27 -> DRV8871 IN2
+//   GND    -> DRV8871 GND   (common ground with the PSU — REQUIRED)
 //   GPIO2  = onboard LED heartbeat
 
 #include <Arduino.h>
 
 static const uint8_t LED_PIN = 2;
-static const uint8_t PIN_EN  = 25;   // PWM enable  -> L293D EN1,2
-static const uint8_t PIN_IN1 = 26;   // direction   -> L293D IN1
-static const uint8_t PIN_IN2 = 27;   // direction   -> L293D IN2
+static const uint8_t PIN_IN1 = 26;   // DRV8871 IN1
+static const uint8_t PIN_IN2 = 27;   // DRV8871 IN2
 
-// ESP32 LEDC PWM setup for the enable pin.
-static const int      PWM_CH   = 0;
-static const int      PWM_FREQ = 1000;   // 1 kHz — fine for a bench motor
-static const int      PWM_RES  = 8;      // 8-bit -> duty 0..255
+// ESP32 LEDC PWM: one channel per input, since the DRV8871 has no separate
+// enable pin — PWM must ride on whichever input is the active-direction one.
+static const int      PWM_CH_IN1 = 0;
+static const int      PWM_CH_IN2 = 1;
+static const int      PWM_FREQ   = 20000;  // 20 kHz — above audible, easy for the DRV8871
+static const int      PWM_RES    = 8;      // 8-bit -> duty 0..255
 
 static uint32_t lastBeat = 0;
 
-void motorStop() {                       // coast
-  digitalWrite(PIN_IN1, LOW);
-  digitalWrite(PIN_IN2, LOW);
-  ledcWrite(PWM_CH, 0);
+void motorStop() {                       // coast: both inputs low
+  ledcWrite(PWM_CH_IN1, 0);
+  ledcWrite(PWM_CH_IN2, 0);
 }
 
-void motorBrake() {                      // active brake
-  digitalWrite(PIN_IN1, HIGH);
-  digitalWrite(PIN_IN2, HIGH);
-  ledcWrite(PWM_CH, 255);
+void motorBrake() {                      // active brake: both inputs high
+  ledcWrite(PWM_CH_IN1, 255);
+  ledcWrite(PWM_CH_IN2, 255);
 }
 
 void motorDrive(bool forward, int duty) {
   duty = constrain(duty, 0, 255);
-  digitalWrite(PIN_IN1, forward ? HIGH : LOW);
-  digitalWrite(PIN_IN2, forward ? LOW  : HIGH);
-  ledcWrite(PWM_CH, duty);
+  if (forward) {                         // PWM on IN1, IN2 low
+    ledcWrite(PWM_CH_IN1, duty);
+    ledcWrite(PWM_CH_IN2, 0);
+  } else {                               // PWM on IN2, IN1 low
+    ledcWrite(PWM_CH_IN1, 0);
+    ledcWrite(PWM_CH_IN2, duty);
+  }
 }
 
 void setup() {
   pinMode(LED_PIN, OUTPUT);
-  pinMode(PIN_IN1, OUTPUT);
-  pinMode(PIN_IN2, OUTPUT);
-  ledcSetup(PWM_CH, PWM_FREQ, PWM_RES);
-  ledcAttachPin(PIN_EN, PWM_CH);
+  ledcSetup(PWM_CH_IN1, PWM_FREQ, PWM_RES);
+  ledcSetup(PWM_CH_IN2, PWM_FREQ, PWM_RES);
+  ledcAttachPin(PIN_IN1, PWM_CH_IN1);
+  ledcAttachPin(PIN_IN2, PWM_CH_IN2);
   motorStop();
 
   Serial.begin(115200);
   delay(200);
   Serial.println();
-  Serial.println("[neato-esp32] STEP 1 motor driver online.");
+  Serial.println("[neato-esp32] STEP 2 DRV8871 motor driver online.");
   Serial.println("[neato-esp32] cmds: 'F 180' fwd, 'R 200' rev, 'S' stop, 'B' brake.");
 }
 

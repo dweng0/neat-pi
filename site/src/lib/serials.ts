@@ -30,6 +30,17 @@ export const SERIALS: Serial[] = [
     status: 'ongoing',
     coverPhoto: 'topdownview.jpg',
   },
+  {
+    slug: 'learning-rust-on-the-robot',
+    title: 'Learning Rust on the Robot',
+    tagline: 'A learning serial',
+    blurb:
+      "The Neato's ESP32 firmware started life in C++. I'm relearning it in Rust — bare-metal, " +
+      'no_std, on real hardware — and rebuilding the motor control as a reusable driver crate. ' +
+      'A beginner working it out in the open: toolchain pain, borrow-checker fights, and the ' +
+      'refactor from "it works" to "it\'s a library".',
+    status: 'ongoing',
+  },
 ];
 
 export function getSerial(slug: string): Serial | undefined {

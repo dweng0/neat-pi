@@ -1,0 +1,24 @@
+# Project-local rust-analyzer configuration (ratoml).
+# Keys use the un-prefixed path form (drop the leading `rust-analyzer.`).
+#
+# Why this file exists: this is a no_std Xtensa project built with the custom
+# `esp` rustup toolchain fork. rust-analyzer must (a) analyse for the Xtensa
+# target, (b) run rustc/cargo/proc-macros through the `esp` toolchain so it
+# finds a sysroot/rust-src that understands `xtensa-esp32-none-elf`, and
+# (c) NOT check all-targets (there are no host test/bench targets for a
+# no_std bare-metal binary, and --all-targets makes cargo pick the wrong
+# target and fail).
+
+[cargo]
+# Analyse against the firmware's real build target.
+target = "xtensa-esp32-none-elf"
+# Do not pass --all-targets (no host tests/benches on a bare-metal no_std bin).
+allTargets = false
+# Force every rustc / cargo / proc-macro-srv invocation onto the esp fork.
+# rustup then resolves `sysroot = "discover"` to the esp toolchain, whose
+# sysroot ships the rust-src for `core` used by build-std.
+extraEnv = { RUSTUP_TOOLCHAIN = "esp" }
+
+[check]
+# cargo check invocation: same, do not check all-targets.
+allTargets = false
