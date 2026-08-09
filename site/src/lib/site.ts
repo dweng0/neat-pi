@@ -4,8 +4,8 @@ export const SITE = {
   tagline: 'a build blog',
   description:
     'Long-form build stories, documented episode by episode as they actually happen — the wrong turns left in.',
-  // Powers the nav GitHub pill. Drop the real repo URL in here.
-  githubUrl: 'https://github.com/your-handle/neato',
+  // Powers the nav GitHub pill.
+  githubUrl: 'https://github.com/dweng0/neat-pi',
 };
 
 // Nav links, in order. `match` is used to highlight the active tab (August's solid-cyan block).
