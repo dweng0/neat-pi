@@ -20,6 +20,20 @@ Do both, in this order, and **show the user each draft for edits before finalisi
 
 ---
 
+## Site structure (how episodes are organised now)
+
+The site (`site/`, live at **blog.housekeeper.systems**) is a **multi-serial blog** — it can hold several long-form build stories, each told episode by episode. Right now there's one serial: the **Neato D10 Brain Transplant**.
+
+- An **episode** = one post in a serial. Files still live in `./blog/NN-title.md` exactly as before.
+- Each episode belongs to a **serial** via the optional `serial:` frontmatter field. No field → it belongs to the Neato build (the default). So **existing and new Neato episodes need no `serial:` line.**
+- Serials are registered in **`site/src/lib/serials.ts`** (slug, title, tagline, blurb, status, cover photo). To start a *new* serial: add an entry there, then tag that serial's episodes with `serial: <slug>`. Nothing else moves.
+- Blog identity (name, tagline, GitHub URL) lives in **`site/src/lib/site.ts`**.
+- Photos are auto-optimised (see `heroPhoto` note below) — the raw originals in `./photos` stay untouched.
+
+You normally only touch `./blog` and the handoff. Only edit `serials.ts`/`site.ts` if the user is spinning up a new serial or changing blog-level identity.
+
+---
+
 ## Step 1 — gather what happened this session
 
 Before writing, reconstruct the session honestly from the conversation:
@@ -48,8 +62,11 @@ If the session was thin (nothing really happened), say so and offer to skip the 
    teaser: "One or two sentences. A hook, not a summary. Hint the tension."
    heroPhoto: some-photo.jpg   # optional — a filename from ./photos, omit if none fits
    seeAlso: [reference/handoff]  # optional cross-links
+   serial: neato-d10-brain-transplant   # optional — omit for the Neato build (it's the default)
    ---
    ```
+   - **`heroPhoto` can be any `./photos` filename, raw and uncompressed.** The site runs it through Astro's image pipeline at build time → webp + responsive sizes. Don't pre-shrink photos; just drop the full-res file in `./photos` and name it here. It becomes the episode's hero *and* the card image in the blog grid.
+   - **`serial`** ties the episode to a build story (see the Site structure note below). Leave it **off** for Neato D10 episodes — they default to `neato-d10-brain-transplant`. Only set it when writing for a *different* serial, and only after that serial is registered (see below).
 
 3. **Voice — match `./blog/*.md`, especially episode 4.** Read one before writing so the tone carries. The voice is:
    - **First person, past tense, plain-spoken.** "I got the meter out and…" not "The meter was used to…".
@@ -87,6 +104,7 @@ If this session confirmed something that belongs in the **build doc** (`neato-d1
 
 - **Never invent measurements or specs.** Unknown stays unknown, visibly.
 - **Episode = snapshot in time. Handoff = current truth.** An old episode can be "wrong" later (that's fine, it's dated); the handoff must never be.
-- **Only `finish-up` writes**, and only to `./blog`, the handoff, and (when durable) the reference docs. Never touch the `site/` build output.
+- **Only `finish-up` writes**, and only to `./blog`, the handoff, and (when durable) the reference docs. Never touch the `site/` build output. (Exception: registering a *new serial* in `site/src/lib/serials.ts` — only when the user is starting one.)
 - **Show drafts before finalising.** Both the episode and the handoff rewrite get the user's eyes before they're done.
-- The site (`site/`) reads all of this in place — you don't need to touch it. Writing the files *is* publishing.
+- The site (`site/`) reads `./blog`, `./photos`, and the reference docs **in place** — writing the files updates the site content; you don't touch the build.
+- **Publishing = commit + push.** Writing the files updates the local content, but the live site (blog.housekeeper.systems) only updates when the repo is pushed to `main` (the host rebuilds on push). Don't commit/push unless the user asks — offer it as the final step.

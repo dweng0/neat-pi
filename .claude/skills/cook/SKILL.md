@@ -32,3 +32,7 @@ This is the **start** half of the build loop. Its job: get the user oriented fas
 - **Honour the doc's own honesty conventions** when briefing: `TBD` = needs measurement, `?` = unconfirmed, everything else = confirmed from hands-on teardown. Never present a TBD as settled.
 - **Never invent state.** If the handoff doesn't say it, it isn't known. Say "the handoff doesn't cover that" rather than guessing.
 - Keep it short. The user wants to be at the bench, not reading a summary of a summary.
+
+## Site note (context, not part of the brief)
+
+The public devlog is a **multi-serial blog** (`site/`, live at blog.housekeeper.systems) — the Neato build is one serial. `cook` doesn't write to it; episodes and the handoff are `finish-up`'s job. If a session ends up writing an episode or spinning up a new serial, the structure lives in `site/src/lib/serials.ts` (serials) and `site/src/lib/site.ts` (blog identity) — but that's `finish-up` territory, not the resume brief.
