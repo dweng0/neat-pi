@@ -1,0 +1,17 @@
+[package]
+name    = "motor-test-rs"
+version = "0.1.0"
+edition = "2024"
+# A host-side (your Mac) bench tool — NOT the firmware. It talks to the ESP32
+# over USB serial, the same way motor-test.py does. Being a normal `std` binary,
+# it builds and runs with plain `cargo run`, no embedded toolchain involved.
+
+[dependencies]
+# Cross-platform serial port access. This is the host-side equivalent of
+# pyserial. On macOS it opens /dev/cu.usbserial-* just like the Python did.
+serialport = "4"
+
+# Command-line argument parsing. `argparse` in the Python became `clap` here.
+# The "derive" feature lets us describe our args as a struct and get the parser
+# generated for us — you'll see this pattern in almost every Rust CLI.
+clap = { version = "4", features = ["derive"] }
