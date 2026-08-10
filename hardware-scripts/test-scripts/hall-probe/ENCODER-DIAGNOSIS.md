@@ -1,98 +1,144 @@
-# Wheel encoder diagnosis — hall-probe bench session
+# Wheel encoder diagnosis — investigation log
 
-_Recorded 2026-08-10. Tool: `hall-probe` (this dir) + `esp32-firmware/src/main.cpp` (STEP-2 drive+encoder firmware). Port `/dev/cu.usbserial-10` @ 115200._
+_Started 2026-08-10. Tools: `hall-probe` (this dir), `diag/quad-diag.py`, `esp32-firmware/src/main.cpp` (STEP-2 drive+encoder firmware). Port `/dev/cu.usbserial-10` @ 115200._
 
-## TL;DR (current best understanding)
+## TL;DR — FINAL (2026-08-10, after the glitch-filter + F255 experiments)
 
-**Rotation and both channels are real and working.** At `F 0` the counts are stable (no
-drift); at `F 150` both A and B climb steadily and stop when idle → the shaft magnet spins
-and both sensors read it. Raw **edge counts are usable** for "is it spinning / rough speed."
+Three layers, all now proven by experiment:
 
-**The remaining fault is quadrature quality, not dead hardware:**
-- Edge counts are **lopsided and inconsistent** — one run B ≈ 1.9× A, another run A ≈ 1.6× B.
-  A healthy A/B pair is ~1:1 and stable.
-- **`pos` random-walks** (e.g. −6 → +154 → −104) while driving *one* direction — a clean
-  encoder gives monotonic pos. Direction decode is unreliable.
-- Snapshot **levels A and B are almost always equal** (both 0 / both 1) → the two channels
-  read nearly **in phase**, not 90° apart, which breaks the quadrature math.
+1. **All drive-time counts were electrical noise.** ~46–52k phantom edges/s whenever PWM
+   switches; the phantom rate per channel ≈ the **20 kHz PWM frequency** (fingerprint).
+2. **The noise is ground/supply bounce, not narrow spikes — software cannot filter it.**
+   A stability-filter sweep showed the false "dips" are **as wide as the PWM off-time**
+   (~11 µs at duty 200, ~34 µs at duty 80): the signal's reference level is moving with
+   chopped motor current through the **shared daisy-chained ground**. Software filters
+   only downsample it; wide-enough windows would eat all CPU. Fix is wiring: **star
+   ground** (encoder GND direct to ESP32 GND; motor return direct to supply), supply
+   decoupling at the encoder board.
+3. **Under electrically-quiet conditions the real rotation signal is ZERO.** At duty 255
+   (100 % on → no switching) phantom noise collapses 1000× (48k/s → ~43/s) — and the
+   remaining trickle clusters at **spin-up only** (inrush current transient), reads **0 at
+   constant full speed and 0 through the whole coast**. The sensors never register the
+   spinning disc. Only handheld magnets (stronger field, point-blank) have ever tripped
+   them → the underlying fault is **field strength / air gap at the disc**, exactly where
+   the investigation started — but now proven on clean data.
 
-**Likely cause:** the bare `~3.3k` resistor divider gives slow/ragged edges through the ESP32
-logic threshold, and the firmware counts on **every CHANGE with no debounce/hysteresis** →
-one real transition registers as several counts, unevenly per channel → inflated counts +
-scrambled phase. **Durable fix:** clean the edges — a **Schmitt-trigger buffer (hysteresis)**
-or a small **RC filter cap** per line instead of the bare divider.
+Noise-margin arithmetic behind layer 1–2: encoder board pulls up to 5 V through internal
+~2.4k; our ~3.3k-to-GND divider parks idle-high at ≈ **2.9 V** vs the ESP32's ≈ **2.48 V**
+high threshold — **0.4 V of margin**, erased by ground bounce every PWM cycle. The ISR
+counts every CHANGE with no rejection (original firmware).
 
-_(Earlier theories, kept for history: "field too weak / air gap" — true that a stronger field
-made A count, proving the sensor senses; and "phantom edges at idle" — did NOT reproduce, at
-`F 0` it's stable. The rig was physically handled throughout, so behaviour wasn't stationary
-between tests.)_
+## The definitive battery (`diag/quad-diag.py`, 2026-08-10)
 
-## Encoder recap
+Built on one bench fact: **the magnet disc only starts from rest at duty ≥ ~150
+("stiction point")** — so edges at duty < 150 from rest cannot be rotation.
 
-- Firmware keeps `edgeCountA`, `edgeCountB` (raw transitions) and `encPos` (signed
-  quadrature position) as `volatile` globals, updated in an ISR on **CHANGE** interrupts.
-- Counts are **firmware-side state**: they survive a host reconnect and only reset on `Z`
-  (`encoderZero()`) or an ESP32 reboot. (This is why the count "sat at 582 across script
-  restarts" — nothing was stuck; it's just the MCU holding its running total.)
-- The encoder magnet sits on the **motor shaft, before the gearbox** (per
-  `encoder-test.py` header) — so a spinning motor should whip it past sensor A hundreds of
-  times/second.
-- Pins: GPIO32 = A (blue), GPIO33 = B (yellow), each via a ~3.3k-to-GND divider off the
-  open-drain, idle-high 5 V output.
+| Phase | Condition | dA | dB | edges/s | net pos | Reading |
+|-------|-----------|----|----|---------|---------|---------|
+| REST | motor off, 8 s | 0 | 0 | 0 | 0 | perfectly quiet ✅ |
+| NOISE F40 | PWM on, **disc still** | 51 837 | 63 247 | **46 034** | +3 554 | phantom edges, no rotation |
+| NOISE F80 | PWM on, **disc still** | 53 226 | 72 024 | **50 100** | +2 464 | phantom edges |
+| NOISE F120 | PWM on, **disc still** | 54 718 | 75 182 | **51 960** | −404 | phantom edges |
+| SPIN ×3 | F 200, spinning | ≈31.7k | ≈37.2k | ≈23 000 | ≈−550 | **less** than not-spinning F40 |
+| COAST | F 220 → S, wheel spinning down | — | — | 7 425 → **0** within 0.5 s of S | −138 | edges die with PWM, not with motion |
+| BRAKE-REST | brake, at rest | 0 | 0 | 0 | 0 | quiet — noise needs *switching* |
+| REVERSE | R 200 | 30 491 | 38 665 | 23 052 | −398 | pos does **not** flip sign vs F |
 
-## What was observed (in order)
+Key observations:
 
-| Test | A | B | pos | Reading |
-|------|---|---|-----|---------|
-| Driven `F 150`, no boost | **frozen at 62** | 0 | 0 | levels A=1 B=1, never toggled |
-| `Z` then `F 150`, no boost | **stayed 0** | 0 | 0 | zero edges during a real 4 s drive |
-| Speed 0 + **handheld magnet** at sensor | 62 → 120, level 1→0 ×5 | 0 | ticked to 1 | A responds instantly to a magnet |
-| Driving with **booster magnet** stuck on shaft magnet (user paste) | 325360 → 327018 | 115328 → 116246 | ~-8430 → -8600 | both channels climbing |
-| `Z` then `F 150`, **booster on** (my run, 4 s) | +41909 | +25630 | → -7545 | both count; A/B edge ratio ≈ 1.64 (A>B) |
-| `F 0`, booster off, magnet repositioned | frozen at 1 | frozen at 31 | frozen at -2 | **stable at rest — no phantom counts** |
-| `F 150`, booster off (real rotation) | 1 → 3529 | 1 → **6695** | random-walk −104…+154 | both climb steadily; **B ≈ 1.9× A**; pos non-monotonic; levels A≈B (in phase) |
+1. Edge rate correlates with **PWM switching being active**, not with rotation or speed.
+2. SPIN repeatability is eerily tight (31 607 / 31 496 / 31 949) — a consistent electrical
+   source, not flaky contacts.
+3. Coherence (|Δpos| / total edges) ≈ **0.003–0.03 in every driven phase** — healthy
+   quadrature ≈ 1.0. The edges are near-random, they cancel.
+4. Both quiet H-bridge states (coast `S`, brake `B`) are silent.
 
-## What this proves
+Raw streams: `diag/logs/quad-diag-20260810-144805.log`.
 
-- **Sensors A and B, wiring, GPIO, firmware: all functional.** Both channels produce edges
-  and `pos` decodes direction. Neither sensor is dead; nothing was fried by a bridge.
-- The fix that made it "work" was **adding magnetic field strength** — either a handheld
-  magnet at the sensor, or a booster magnet stacked on the shaft magnet. That points
-  squarely at **field strength / air gap** as the fault, not the electronics.
+## Hypotheses — status
 
-## Remaining problems / open questions
+Full ledger with per-hypothesis experiments and verdicts: **`diag/HYPOTHESES.md`**.
+Summary: ✅ confirmed — PWM phantom edges (H6), ground-bounce coupling path (H9), field
+too weak at the disc (H4). ❌ ruled out — dead sensor/wiring (H1), GPIO insensitivity
+(H2), stuck counter (H3), saturation (H5), missing pull-up (H7), software glitch
+filtering as a fix (H8, proven twice). ⚠️ superseded — B-under-counts/in-phase ratios
+(H10: they were ratios of noise), shaft magnet not spinning (H11: resolved as the
+stiction bench fact).
 
-0. **Phantom edges at rest (PRIME SUSPECT).** At `F 0`, motor off, nothing moving, channel
-   A keeps accumulating — impossible for real magnetic edges, so the GPIO32 input is
-   chattering on noise (divider level parked on the ESP32 logic threshold). Decisive check:
-   sit at `F 0` for ~10 s and see if it's **only A** (→ retune GPIO32 divider / add filter
-   cap / hysteresis) or **A and B both** (→ broader grounding/noise issue). This likely
-   inflated the big "working" drive counts and skewed the 1.64 A/B ratio below.
-1. **The shaft magnet is not spinning (observation, booster removed).** If the
-   motor is driving but the magnet on the shaft isn't rotating, that alone explains why
-   real drives never counted — the target the sensor is supposed to see simply isn't
-   moving past it. Suspect: magnet detached / slipped on the shaft, or the shaft/motor
-   isn't actually turning under load. **This is now the prime root-cause candidate.**
-2. **Field too weak on its own.** Even when the shaft magnet does move, its field at the
-   sensor was below the trip threshold without a boost. Durable fix = close the air gap
-   (sensor closer to the magnet), reseat/secure the magnet, or fit a stronger magnet.
-3. **Channel B under-counts.** With the field boosted, A/B edge ratio ≈ **1.64** (a healthy
-   quadrature pair should be ≈ 1.0). B misses ~40% of its edges → `pos` is not yet
-   trustworthy for odometry. Suspect: weaker field at the B sensor, or the GPIO33 divider
-   threshold set a touch too high.
+## Glitch-filter experiments (`diag/glitch-sweep.py`, firmware `G <µs>` command)
+
+The firmware gained a runtime-settable filter (`G 50` = 50 µs, `G 0` = off/original
+behavior; suppressed-edge counter reported in `E` output). Two designs tested:
+
+**Spacing filter** (min gap between accepted edges), swept 0–200 µs with the disc still:
+accepted rate ≈ 1/window at every setting (200 µs → 5,052/s vs 5,000 predicted). It only
+**downsamples** continuous chatter. Falsified the narrow-glitch model.
+
+**Stability filter** (new state must persist X µs), swept 0–10 µs: 1–2 µs catches almost
+nothing; 10 µs kills duty-200 noise (~31/s) but passes duty-80 noise untouched (23k/s).
+⇒ dip width ≈ **PWM off-time** (11 µs @ duty 200, 34 µs @ duty 80): the line follows
+chopped motor current. Software cannot fix this (needed windows would eat the CPU; PCNT's
+hardware filter maxes at ~12.8 µs).
+
+## The duty-255 experiment (decisive, both remaining layers)
+
+Duty 255 = 100 % on = **no PWM switching** = electrically quiet, and the disc definitely
+spins (well above stiction).
+
+- Phantom edges collapse **1000×**: ~48,000/s → **43/s** with `G 0`.
+- Bucketed over time: the residue sits **only in the first ~1 s** (inrush current
+  transient) — **0 edges at constant full speed, 0 through a 3 s coast**.
+- ⇒ coupling is current-driven ground/supply bounce (H9 ✅), and the **real rotation
+  signal is zero** (H4 ✅): the spinning disc never trips the sensors.
+
+## Fix plan (revised after the experiments — software options are dead, H8)
+
+1. **Star ground** (fixes H9): encoder GND straight to ESP32 GND; motor return current
+   straight to the supply — never daisy-chained through the signal ground. Plus 100 nF +
+   ~10 µF decoupling at the encoder board's 5 V, and route encoder lines away from motor
+   leads (twist A/B with their ground).
+2. **Field/gap at the disc** (fixes H4): close the sensor-to-disc air gap, reseat or
+   strengthen the disc magnet, verify the disc actually carries alternating poles.
+3. **Noise margin** (hardening): the 2.9 V idle-high vs 2.48 V threshold deserves a
+   proper level shifter / comparator / Schmitt buffer regardless.
+4. **Re-verify** with `diag/quad-diag.py` after each change: below-stiction phases must
+   read **0**, and coast must show **decaying real edges**, before any count is trusted.
+5. Real-edge sanity number: motor at a few kRPM with a simple pole disc ⇒ expect
+   **hundreds to low-thousands of edges/s** — anything ≫ that is noise.
+
+## Observation history (chronological, superseded readings included)
+
+| Test | A | B | pos | Reading at the time |
+|------|---|---|-----|---------------------|
+| Driven `F 150`, no boost | frozen at 62 | 0 | 0 | levels A=1 B=1, never toggled |
+| `Z` then `F 150`, no boost | stayed 0 | 0 | 0 | zero edges during a real 4 s drive |
+| Speed 0 + handheld magnet at sensor | 62 → 120, level 1→0 ×5 | 0 | ticked to 1 | **genuine edges** — sensor path proven |
+| Driving with booster magnet on shaft | 325k → 327k | 115k → 116k | ≈−8500 | *(believed rotation; actually noise)* |
+| `Z` + `F 150`, booster on, 4 s | +41 909 | +25 630 | −7 545 | *(believed rotation; actually noise)* |
+| `F 0`, booster off | frozen | frozen | frozen | stable at rest ✅ |
+| `F 150`, booster off | → 3 529 | → 6 695 | random-walk | *(believed rotation; actually noise)* |
+| Duty sweep + coherence battery | — | — | — | coherence ≈ 0 at all duties — first hard noise evidence |
+| **quad-diag battery** | — | — | — | **definitive: noise-only, see above** |
+
+Notes for the record:
+- Counts are firmware-side `volatile` state — they survive host reconnects; reset only on
+  `Z` or ESP32 reboot (explains "sat at 582 across script restarts").
+- The encoder magnet sits on the **motor shaft, before the gearbox**.
+- Research: hall sensors have a **max-Gauss rating** (a too-strong magnet too close can
+  damage them — the booster-stack was a risk, but magnet tests show the sensors survived);
+  latching types (US1881-style) need an **opposing pole** to unlatch, so a single handheld
+  pole flips them once and they hold — matches the level-flip behaviour we saw.
 
 ## Next steps
 
-- Confirm whether the **shaft magnet physically rotates** when the motor is driven
-  (eyeball the shaft, not just the wheel). If it doesn't spin, fix the magnet mount first —
-  everything downstream depends on it.
-- Once it spins on its own: measure the **A/B edge ratio** and pull it toward 1.0 by
-  improving the B field/gap or tuning the GPIO33 divider.
-- Re-run baseline with `hall-probe` (or the python snippet in the session) with **no
-  booster magnet** to prove the rig stands on its own.
+1. **Fix the noise first** — nothing about the encoder can be judged until the lines are
+   clean. Cheapest experiment: firmware glitch filter / PCNT; then RC or Schmitt in hardware.
+2. Re-run `diag/quad-diag.py` after each change — REST and NOISE-F40/80/120 phases must
+   read **0** before drive-time counts mean anything.
+3. Then re-evaluate air gap / field strength / A-B phase with real signals.
 
 ## Firmware command reference
 
 `F <0-255>` fwd · `R <0-255>` rev · `S` stop · `B` brake · `E` read encoder once ·
-`Z` zero the counts. Firmware also streams `[enc] A=.. B=.. pos=..` (~2/s) while moving.
-Port is **single-owner** — close any running `hall-probe` / serial monitor before opening it.
+`Z` zero the counts. Firmware streams `[enc] …` (~2/s) while counts change.
+Port is **single-owner** — close any running `hall-probe` / serial monitor first.

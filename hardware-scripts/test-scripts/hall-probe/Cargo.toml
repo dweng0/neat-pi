@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 serialport = "4.9.0"
 ctrlc = "3.4"
+protocol = { path = "../../../protocol/" }

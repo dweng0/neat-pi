@@ -1,48 +1,67 @@
 // hall-probe — a learn-Rust-from-scratch bench tool for the Neato ESP32.
 
+use protocol::command::Command;
+use protocol::serial::LineReader;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-const PORT: &str = "/dev/cu.usbserial-10";
+const PORT: &str = "/tmp/cu.usbserial-"; // TEMP: fake-firmware.py pty; restore /dev/cu.usbserial- for real hardware
+
 const BAUD: u32 = 115_200;
 const READ_TIMEOUT_MS: u64 = 100;
 
-fn get_direction(direction: &str) -> &str {
+enum Direction {
+    Forward,
+    Backward,
+}
+
+fn get_direction(direction: &str) -> Result<Direction, String> {
     match direction {
-        "F" => "forward",
-        "B" => "backward",
-        _ => "unknown",
+        "F" => Ok(Direction::Forward),
+        "B" => Ok(Direction::Backward),
+        "R" => Ok(Direction::Backward),
+        _ => Err(format!("Bad direction {direction}")),
     }
+}
+
+fn bail<T>(msg: String) -> T {
+    eprintln!("{msg}");
+    std::process::exit(2)
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() != 4 {
+        bail::<()>("Usage: hall-probe <serial-number> <F|B> <speed>".to_string());
+    }
 
-    let direction = &args[1];
-    let speed = &args[2];
-
-    println!("Driving {} at speed {}", get_direction(direction), speed);
-
-    let speed_number: u8 = match speed.parse::<u8>() {
-        Ok(number) => number,
-        Err(error) => {
-            eprintln!("Couldn't read speed '{speed}' ({error}); defaulting to 0");
-            0
-        }
+    let serial_number = &args[1];
+    let direction = get_direction(&args[2]).unwrap_or_else(bail::<Direction>);
+    let speed = &args[3];
+    let direction_word = match direction {
+        Direction::Forward => "forward",
+        Direction::Backward => "backward",
     };
 
-    println!("parsed duty = {}", speed_number);
+    let speed_number: u8 = speed
+        .parse()
+        .unwrap_or_else(|| bail(format!("Unable to parse Speed: {}")));
+    let full_path = format!("{PORT}{serial_number}");
 
-    // ── STEP 3: open the ESP32 serial port ───────────────────────────────
-    let opened = serialport::new(PORT, BAUD)
+    println!(
+        "Running {} at speed {} on serial {}",
+        direction_word, speed, full_path
+    );
+
+    let opened = serialport::new(full_path, BAUD)
         .timeout(Duration::from_millis(READ_TIMEOUT_MS))
         .open();
 
     let mut port = match opened {
         Ok(p) => p,
         Err(error) => {
-            eprintln!("Couldn't open port {PORT}: {error}");
+            eprintln!("Couldn't open port: {error}");
             std::process::exit(1)
         }
     };
@@ -58,24 +77,31 @@ fn main() {
     })
     .expect("Failed to set Ctrl-C handler");
 
-    let fw = match direction.as_str() {
-        "B" => "R",
-        _ => "F",
+    let command = match direction {
+        Direction::Forward => Command::Forward(speed_number),
+        Direction::Backward => Command::Reverse(speed_number),
     };
 
-    let line = format!("{} {}\n", fw, speed_number);
+    let line = format!("{command}\n");
     port.write_all(line.as_bytes())
         .expect("failed to write command to port");
 
     let mut buf = [0u8; 1024];
 
+    let mut reader = LineReader::new();
+
     while running.load(Ordering::SeqCst) {
         port.write_all("E\n".as_bytes())
             .expect("Failed to write out");
 
-        // port.read FILLS buf with fresh bytes and returns how many (n).
         match port.read(&mut buf) {
-            Ok(n) => print!("{}", String::from_utf8_lossy(&buf[..n])),
+            Ok(n) => {
+                for &byte in &buf[..n] {
+                    if let Some(line) = reader.feed(byte) {
+                        println!("{line}");
+                    }
+                }
+            }
             Err(_) => continue,
         }
     }

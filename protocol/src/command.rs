@@ -10,6 +10,7 @@
 //!   R <0-255>   reverse at PWM duty   e.g. "R 200"
 //!   S           stop / coast
 //!   B           brake (short the motor)
+//!   Z           zero
 //!   <number>    bare number -> treated as forward at that duty
 
 /// A parsed, validated instruction for the motor.
@@ -21,6 +22,28 @@ pub enum Command {
     Reverse(u8),
     Stop,
     Brake,
+    Zero,
+}
+
+/// Render a `Command` back to its wire text (the inverse of `parse_command`).
+///
+/// Implementing `Display` means BOTH sides get encoding: the host tool can
+/// `format!("{cmd}\n")`, and the firmware can `write!` it into a buffer.
+/// NOTE: no trailing newline here — Display is the pure value ("F 180");
+/// whoever sends it adds the framing '\n'.
+impl core::fmt::Display for Command {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        // Pull the variants into scope so we can write `Forward` not
+        // `Command::Forward` on every arm.
+        use Command::*;
+        match self {
+            Forward(duty) => write!(f, "F {duty}"),
+            Reverse(duty) => write!(f, "R {duty}"),
+            Stop => write!(f, "S"),
+            Brake => write!(f, "B"),
+            Zero => write!(f, "Z"),
+        }
+    }
 }
 
 /// Why a line failed to parse. Returning a typed error (rather than silently

@@ -75,11 +75,32 @@ static const int8_t QDEC[16] = {
    0, +1, -1,  0
 };
 
+// ---- Glitch filter (noise experiment — see hall-probe/ENCODER-DIAGNOSIS.md) ----
+// Motor PWM chatters the encoder pins with a sub-µs dip roughly every 20 kHz
+// PWM cycle (only ~0.4 V of noise margin on the divider). A minimum-SPACING
+// filter was tried first and only downsampled the chatter (the noise repeats
+// continuously, so an edge is always waiting when the window expires). This is
+// a STABILITY filter instead: a new AB state is accepted only if it is still
+// present glitchUs later — a PWM dip bounces back before confirmation, a real
+// hall transition stays. 'G <us>' sets the window; G 0 (boot default) = off,
+// identical to the original behavior. Keep the window small (1-10 µs): the ISR
+// busy-waits for it on every candidate edge.
+volatile uint32_t glitchUs      = 0;  // stability window; 0 = filter off
+volatile uint32_t suppressedGl  = 0;  // candidate edges that didn't survive it
+
 void IRAM_ATTR onEncEdge() {
   uint8_t a = (uint8_t)digitalRead(PIN_ENC_A);
   uint8_t b = (uint8_t)digitalRead(PIN_ENC_B);
   uint8_t now = (uint8_t)((a << 1) | b);
   uint8_t prev = encPrev;
+  if (now == prev) return;             // interrupt fired but no net state change
+  if (glitchUs) {
+    uint32_t t0 = micros();
+    while (micros() - t0 < glitchUs) {}          // hold...
+    a = (uint8_t)digitalRead(PIN_ENC_A);         // ...and re-read
+    b = (uint8_t)digitalRead(PIN_ENC_B);
+    if ((uint8_t)((a << 1) | b) != now) { suppressedGl++; return; }
+  }
   if (((prev >> 1) & 1) != a) edgeCountA++;
   if ((prev & 1) != b)        edgeCountB++;
   encPos += QDEC[(prev << 2) | now];
@@ -115,7 +136,7 @@ void encoderSnapshot(uint32_t &a, uint32_t &b, int32_t &p) {
 
 void encoderZero() {
   noInterrupts();
-  edgeCountA = 0; edgeCountB = 0; encPos = 0;
+  edgeCountA = 0; edgeCountB = 0; encPos = 0; suppressedGl = 0;
   interrupts();
 }
 
@@ -138,7 +159,7 @@ void setup() {
   delay(200);
   Serial.println();
   Serial.println("[neato-esp32] STEP 2 DRV8871 motor driver + encoder online.");
-  Serial.println("[neato-esp32] cmds: 'F 180' fwd, 'R 200' rev, 'S' stop, 'B' brake, 'E' enc, 'Z' zero.");
+  Serial.println("[neato-esp32] cmds: 'F 180' fwd, 'R 200' rev, 'S' stop, 'B' brake, 'E' enc, 'Z' zero, 'G 50' glitch-filter us.");
   uint32_t a, b; int32_t p;
   encoderSnapshot(a, b, p);
   Serial.printf("[enc] idle A=%u B=%u pos=%d (levels: A=%d B=%d)\n",
@@ -154,11 +175,18 @@ void handleCommand(String line) {
   if (c == 'S') { motorStop();  Serial.println("[motor] stop");  return; }
   if (c == 'B') { motorBrake(); Serial.println("[motor] brake"); return; }
   if (c == 'Z') { encoderZero(); Serial.println("[enc] zeroed");  return; }
+  if (c == 'G') {                       // glitch filter: 'G 50' = 50 µs, 'G 0' = off
+    glitchUs = (uint32_t)line.substring(1).toInt();
+    suppressedGl = 0;
+    Serial.printf("[enc] glitch filter = %u us\n", glitchUs);
+    return;
+  }
   if (c == 'E') {
     uint32_t a, b; int32_t p;
     encoderSnapshot(a, b, p);
-    Serial.printf("[enc] A=%u B=%u pos=%d (levels: A=%d B=%d)\n",
-                  a, b, p, digitalRead(PIN_ENC_A), digitalRead(PIN_ENC_B));
+    Serial.printf("[enc] A=%u B=%u pos=%d (levels: A=%d B=%d) filt=%uus supp=%u\n",
+                  a, b, p, digitalRead(PIN_ENC_A), digitalRead(PIN_ENC_B),
+                  glitchUs, suppressedGl);
     return;
   }
 
