@@ -1,5 +1,7 @@
 // hall-probe — a learn-Rust-from-scratch bench tool for the Neato ESP32.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const PORT: &str = "/dev/cu.usbserial-10";
@@ -47,9 +49,15 @@ fn main() {
 
     println!("port opened");
 
-    // ── STEP 4: translate direction, then send the line ──────────────────
-    // A `match` is an EXPRESSION; `let fw =` binds whatever arm wins.
-    // .as_str() turns &String -> &str so the "F"/"R" patterns line up.
+    port.write_all("Z\n".as_bytes())
+        .expect("Failed to clear sensormoto");
+    let running = Arc::new(AtomicBool::new(true));
+    let handler_flag = running.clone(); // the handler gets its OWN Arc handle
+    ctrlc::set_handler(move || {
+        handler_flag.store(false, Ordering::SeqCst);
+    })
+    .expect("Failed to set Ctrl-C handler");
+
     let fw = match direction.as_str() {
         "B" => "R",
         _ => "F",
@@ -59,26 +67,19 @@ fn main() {
     port.write_all(line.as_bytes())
         .expect("failed to write command to port");
 
-    // ── STEP 5: read the robot's replies (is the hall sensor alive?) ──────
-    // Once it starts driving, the firmware streams text lines back, e.g.
-    //   "[motor] fwd duty=180"   and   "[enc] A=.. B=.. pos=.."
     let mut buf = [0u8; 1024];
 
-    // ✗ `loop` stands alone — no `for _ in`. It should just be:
-    //   loop {
-
-    loop {
+    while running.load(Ordering::SeqCst) {
         port.write_all("E\n".as_bytes())
             .expect("Failed to write out");
 
         // port.read FILLS buf with fresh bytes and returns how many (n).
         match port.read(&mut buf) {
-            // got n bytes -> print just those (&buf[..n]), decoded as text.
-            // from_utf8_lossy turns raw bytes into a string, swapping any
-            // invalid byte for a placeholder instead of panicking.
             Ok(n) => print!("{}", String::from_utf8_lossy(&buf[..n])),
-            // a read TIMEOUT lands here (no data this pass) -> just try again.
             Err(_) => continue,
         }
     }
+
+    port.write_all("S\n".as_bytes())
+        .expect("Failed to clear sensormotormotors");
 }
