@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-const PORT: &str = "/tmp/cu.usbserial-"; // TEMP: fake-firmware.py pty; restore /dev/cu.usbserial- for real hardware
+const PORT: &str = "/dev/cu.usbserial-"; // real hardware; use /tmp/cu.usbserial- for the fake-firmware.py pty
 
 const BAUD: u32 = 115_200;
 const READ_TIMEOUT_MS: u64 = 100;
