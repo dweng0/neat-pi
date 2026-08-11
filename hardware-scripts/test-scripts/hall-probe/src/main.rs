@@ -46,7 +46,7 @@ fn main() {
 
     let speed_number: u8 = speed
         .parse()
-        .unwrap_or_else(|| bail(format!("Unable to parse Speed: {}")));
+        .unwrap_or_else(|e| bail(format!("Unable to parse Speed: {e}")));
     let full_path = format!("{PORT}{serial_number}");
 
     println!(
