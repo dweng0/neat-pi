@@ -490,7 +490,7 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "heapless 0.8.0",
- "protocol",
+ "pwm-serial-protocol",
 ]
 
 [[package]]
@@ -798,8 +798,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "protocol"
-version = "0.1.0"
+name = "pwm-serial-protocol"
+version = "1.0.0"
 dependencies = [
  "heapless 0.8.0",
 ]

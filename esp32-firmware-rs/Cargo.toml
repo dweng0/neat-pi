@@ -22,7 +22,7 @@ heapless = "0.8"
 # The pure, hardware-free logic (serial line reader + command parser), split
 # into its own crate so it builds and unit-tests on the host. Lives beside this
 # crate (not inside it) so it doesn't inherit the Xtensa target from .cargo/config.
-protocol = { path = "../protocol" }
+protocol = { path = "../protocol", package = "pwm-serial-protocol" }
 
 
 # For fine tuning these settings, please refer to https://doc.rust-lang.org/cargo/reference/profiles.html

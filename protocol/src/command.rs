@@ -6,12 +6,15 @@
 //! every variant, so we can't forget one.
 //!
 //! Serial protocol (same as the C++ firmware, 115200 baud, newline-terminated):
-//!   F <0-255>   forward at PWM duty   e.g. "F 180"
-//!   R <0-255>   reverse at PWM duty   e.g. "R 200"
-//!   S           stop / coast
-//!   B           brake (short the motor)
-//!   Z           zero
-//!   <number>    bare number -> treated as forward at that duty
+//!
+//! ```text
+//! F <0-255>   forward at PWM duty   e.g. "F 180"
+//! R <0-255>   reverse at PWM duty   e.g. "R 200"
+//! S           stop / coast
+//! B           brake (short the motor)
+//! Z           zero
+//! <number>    bare number -> treated as forward at that duty
+//! ```
 
 /// A parsed, validated instruction for the motor.
 ///
@@ -33,8 +36,6 @@ pub enum Command {
 /// whoever sends it adds the framing '\n'.
 impl core::fmt::Display for Command {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        // Pull the variants into scope so we can write `Forward` not
-        // `Command::Forward` on every arm.
         use Command::*;
         match self {
             Forward(duty) => write!(f, "F {duty}"),
@@ -58,30 +59,80 @@ pub enum ParseError {
     BadDuty,
 }
 
-/// Parse one trimmed line into a `Command`.
+/// Parse one line of wire text into a [`Command`].
 ///
-/// EXPECTED BEHAVIOUR (your TODO):
-///   - Trim the line. If it's empty, return `Err(ParseError::Empty)`.
-///   - Look at the first character, case-insensitively:
-///       'S' -> Ok(Command::Stop)
-///       'B' -> Ok(Command::Brake)
-///       'F' -> parse the rest of the line as a u8 duty -> Ok(Command::Forward(duty))
-///       'R' -> parse the rest of the line as a u8 duty -> Ok(Command::Reverse(duty))
-///       a digit -> the whole line is a bare number -> Ok(Command::Forward(duty))
-///       anything else -> Err(ParseError::UnknownCommand)
-///   - If a duty is required but missing or not a valid 0..=255, return
-///     `Err(ParseError::BadDuty)`.
+/// The first character selects the command, case-insensitively. `F` and `R`
+/// take a PWM duty in `0..=255`; a bare number is treated as [`Command::Forward`]
+/// at that duty. Surrounding whitespace is ignored.
 ///
-/// HINTS:
-///   - `line.trim()` gives you a `&str` with surrounding whitespace removed.
-///   - `line.chars().next()` gets the first char; `c.to_ascii_uppercase()`
-///     normalises case; `c.is_ascii_digit()` tests for a bare number.
-///   - `"180".parse::<u8>()` returns `Result<u8, _>` — note `u8` parsing already
-///     rejects anything above 255 for you, which is handy.
-///   - For "F 180", you want the substring after the first char, trimmed, then
-///     parsed. `line[1..].trim()` is one way.
-///   - Map the parse `Result` into our `ParseError::BadDuty` with `.map_err(...)`
-///     or an `if let` / `match`.
+/// # Examples
+///
+/// ```
+/// use pwm_serial_protocol::command::{parse_command, Command};
+///
+/// assert_eq!(parse_command("F 180"), Ok(Command::Forward(180)));
+/// assert_eq!(parse_command("200"),   Ok(Command::Forward(200)));
+/// assert_eq!(parse_command("s"),     Ok(Command::Stop));
+/// ```
+///
+/// # Errors
+///
+/// - [`ParseError::Empty`] — the line was blank or only whitespace.
+/// - [`ParseError::BadDuty`] — an `F`/`R` duty was missing or outside `0..=255`.
+/// - [`ParseError::UnknownCommand`] — the first character matched nothing above.
+
 pub fn parse_command(line: &str) -> Result<Command, ParseError> {
-    todo!("parse `line` into a Command per the rules above")
+    // Grab the first char as an Option, bail if empty, uppercase for case-insensitivity.
+    let first_character = line.trim().chars().next();
+    let c = first_character
+        .ok_or(ParseError::Empty)?
+        .to_ascii_uppercase();
+    match c {
+        'S' => Ok(Command::Stop),
+        'B' => Ok(Command::Brake),
+        'F' => {
+            let trimmed_line = line.trim()[1..].trim();
+            let duty = parse_duty(trimmed_line)?;
+            Ok(Command::Forward(duty))
+        }
+        'R' => {
+            let trimmed_line = line.trim()[1..].trim();
+            let duty = parse_duty(trimmed_line)?;
+            Ok(Command::Reverse(duty))
+        }
+        '0'..='9' => {
+            let duty = parse_duty(line.trim())?;
+            Ok(Command::Forward(duty))
+        }
+        _ => Err(ParseError::UnknownCommand),
+    }
+}
+
+fn parse_duty(duty_str: &str) -> Result<u8, ParseError> {
+    duty_str.parse::<u8>().map_err(|_| ParseError::BadDuty)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_stop() {
+        assert_eq!(parse_command("S"), Ok(Command::Stop));
+    }
+
+    #[test]
+    fn parses_forward_with_duty() {
+        assert_eq!(parse_command("F 180"), Ok(Command::Forward(180)));
+    }
+
+    #[test]
+    fn parses_bare_number_as_forward() {
+        assert_eq!(parse_command("200"), Ok(Command::Forward(200)));
+    }
+
+    #[test]
+    fn junk_is_unknown() {
+        assert_eq!(parse_command("hello"), Err(ParseError::UnknownCommand));
+    }
 }
