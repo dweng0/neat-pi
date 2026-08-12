@@ -1,7 +1,13 @@
 [package]
-edition = "2024"
-name    = "pwm-serial-protocol"
-version = "1.0.0"
+edition     = "2024"
+name        = "pwm-serial-protocol"
+version     = "1.0.0"
+description = "no_std parser and encoder for a tiny newline-terminated serial protocol that drives a PWM motor controller (F/R/S/B/Z commands)."
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/dweng0/neat-pi"
+readme      = "README.md"
+keywords    = ["serial", "protocol", "embedded", "no_std", "pwm"]
+categories  = ["embedded", "no-std", "parser-implementations"]
 
 [dependencies]
 heapless = "0.8"
