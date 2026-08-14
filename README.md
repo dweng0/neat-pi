@@ -1,6 +1,6 @@
 # Neato D10 — Brain Transplant
 
-Turning a bricked robot vacuum into a robot I actually own.
+:) Turning a bricked robot vacuum into a robot I actually own.
 
 ## What this is
 
