@@ -1,6 +1,6 @@
 // hall-probe — a learn-Rust-from-scratch bench tool for the Neato ESP32.
 
-use protocol::command::Command;
+use protocol::command::{Command, get_command_action};
 use protocol::serial::LineReader;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,46 +11,45 @@ const PORT: &str = "/dev/cu.usbserial-"; // real hardware; use /tmp/cu.usbserial
 const BAUD: u32 = 115_200;
 const READ_TIMEOUT_MS: u64 = 100;
 
-enum Direction {
-    Forward,
-    Backward,
-}
-
-fn get_direction(direction: &str) -> Result<Direction, String> {
-    match direction {
-        "F" => Ok(Direction::Forward),
-        "B" => Ok(Direction::Backward),
-        "R" => Ok(Direction::Backward),
-        _ => Err(format!("Bad direction {direction}")),
-    }
-}
-
 fn bail<T>(msg: String) -> T {
     eprintln!("{msg}");
     std::process::exit(2)
 }
 
 fn main() {
+    // Collect args from the user....
     let args: Vec<String> = std::env::args().collect();
+
+    // Gate on it, check we actually have args
     if args.len() != 4 {
-        bail::<()>("Usage: hall-probe <serial-number> <F|B> <speed>".to_string());
+        bail::<()>("Usage: hall-probe <serial-number> <F|R> <speed>".to_string());
     }
 
+    // grab serial
     let serial_number = &args[1];
-    let direction = get_direction(&args[2]).unwrap_or_else(bail::<Direction>);
+
+    // grab direction and speed
     let speed = &args[3];
-    let direction_word = match direction {
-        Direction::Forward => "forward",
-        Direction::Backward => "backward",
-    };
 
     let speed_number: u8 = speed
         .parse()
         .unwrap_or_else(|e| bail(format!("Unable to parse Speed: {e}")));
+
     let full_path = format!("{PORT}{serial_number}");
 
+    // Turn "<F|R> <speed>" straight into a typed Command. The Command enum is the
+    // single source of truth — no separate Direction enum to keep in sync.
+    let command = get_command_action(&args[2], Some(speed_number))
+        .unwrap_or_else(|e| bail(format!("Bad direction {:?}: {e:?}", args[2])));
+
+    let direction_word = match command {
+        Command::Forward(_) => "forward",
+        Command::Reverse(_) => "backward",
+        _ => "unknown",
+    };
+
     println!(
-        "Running {} at speed {} on serial {}",
+        "Running {} at speed {} on  {}",
         direction_word, speed, full_path
     );
 
@@ -66,7 +65,7 @@ fn main() {
         }
     };
 
-    println!("port opened");
+    println!("port opened...");
 
     port.write_all("Z\n".as_bytes())
         .expect("Failed to clear sensormoto");
@@ -76,11 +75,6 @@ fn main() {
         handler_flag.store(false, Ordering::SeqCst);
     })
     .expect("Failed to set Ctrl-C handler");
-
-    let command = match direction {
-        Direction::Forward => Command::Forward(speed_number),
-        Direction::Backward => Command::Reverse(speed_number),
-    };
 
     let line = format!("{command}\n");
     port.write_all(line.as_bytes())

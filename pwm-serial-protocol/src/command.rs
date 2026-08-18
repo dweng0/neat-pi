@@ -18,14 +18,47 @@
 
 /// A parsed, validated instruction for the motor.
 ///
-/// `duty` is the PWM level 0..=255, matching the C++ firmware's 8-bit duty.
+/// Every variant carries a [`CommandPayload`] so the label + duty travel
+/// together. `S`/`B`/`Z` have no meaningful duty, so they carry `0`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
-    Forward(u8),
-    Reverse(u8),
-    Stop,
-    Brake,
-    Zero,
+    Forward(CommandPayload),
+    Reverse(CommandPayload),
+    Stop(CommandPayload),
+    Brake(CommandPayload),
+    Zero(CommandPayload),
+}
+
+/// The label + duty that rides inside a [`Command`].
+///
+/// `label` is a `&'static str` (a borrow of text baked into the binary), not a
+/// `String`: this crate is `no_std` on the chip, so there's no heap to allocate
+/// a `String` on. A `&'static str` costs nothing and is `Copy`, which is why the
+/// whole type can derive `Copy`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandPayload {
+    pub label: &'static str,
+    pub duty: u8,
+}
+
+impl CommandPayload {
+    /// Build a payload. A `u8` is a single Copy byte, so we take it by value.
+    pub fn new(label: &'static str, duty: u8) -> Self {
+        Self { label, duty }
+    }
+}
+
+/// Map an already-split direction token + optional duty into a typed [`Command`].
+/// `F`/`R` require a duty (missing → [`ParseError::BadDuty`]); `S`/`B`/`Z` ignore it.
+pub fn get_command_action(direction: &str, duty: Option<u8>) -> Result<Command, ParseError> {
+    match direction {
+        "F" => Ok(Command::Forward(CommandPayload::new("F", duty.ok_or(ParseError::BadDuty)?))),
+        "R" => Ok(Command::Reverse(CommandPayload::new("R", duty.ok_or(ParseError::BadDuty)?))),
+        "S" => Ok(Command::Stop(CommandPayload::new("S", 0))),
+        "B" => Ok(Command::Brake(CommandPayload::new("B", 0))),
+        "Z" => Ok(Command::Zero(CommandPayload::new("Z", 0))),
+        _ => Err(ParseError::UnknownCommand),
+    }
 }
 
 /// Render a `Command` back to its wire text (the inverse of `parse_command`).
@@ -38,11 +71,11 @@ impl core::fmt::Display for Command {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         use Command::*;
         match self {
-            Forward(duty) => write!(f, "F {duty}"),
-            Reverse(duty) => write!(f, "R {duty}"),
-            Stop => write!(f, "S"),
-            Brake => write!(f, "B"),
-            Zero => write!(f, "Z"),
+            Forward(p) => write!(f, "F {}", p.duty),
+            Reverse(p) => write!(f, "R {}", p.duty),
+            Stop(_) => write!(f, "S"),
+            Brake(_) => write!(f, "B"),
+            Zero(_) => write!(f, "Z"),
         }
     }
 }
@@ -68,11 +101,11 @@ pub enum ParseError {
 /// # Examples
 ///
 /// ```
-/// use pwm_serial_protocol::command::{parse_command, Command};
+/// use pwm_serial_protocol::command::{parse_command, Command, CommandPayload};
 ///
-/// assert_eq!(parse_command("F 180"), Ok(Command::Forward(180)));
-/// assert_eq!(parse_command("200"),   Ok(Command::Forward(200)));
-/// assert_eq!(parse_command("s"),     Ok(Command::Stop));
+/// assert_eq!(parse_command("F 180"), Ok(Command::Forward(CommandPayload::new("F", 180))));
+/// assert_eq!(parse_command("200"),   Ok(Command::Forward(CommandPayload::new("F", 200))));
+/// assert_eq!(parse_command("s"),     Ok(Command::Stop(CommandPayload::new("S", 0))));
 /// ```
 ///
 /// # Errors
@@ -80,7 +113,6 @@ pub enum ParseError {
 /// - [`ParseError::Empty`] — the line was blank or only whitespace.
 /// - [`ParseError::BadDuty`] — an `F`/`R` duty was missing or outside `0..=255`.
 /// - [`ParseError::UnknownCommand`] — the first character matched nothing above.
-
 pub fn parse_command(line: &str) -> Result<Command, ParseError> {
     // Grab the first char as an Option, bail if empty, uppercase for case-insensitivity.
     let first_character = line.trim().chars().next();
@@ -88,21 +120,21 @@ pub fn parse_command(line: &str) -> Result<Command, ParseError> {
         .ok_or(ParseError::Empty)?
         .to_ascii_uppercase();
     match c {
-        'S' => Ok(Command::Stop),
-        'B' => Ok(Command::Brake),
+        'S' => Ok(Command::Stop(CommandPayload::new("S", 0))),
+        'B' => Ok(Command::Brake(CommandPayload::new("B", 0))),
         'F' => {
             let trimmed_line = line.trim()[1..].trim();
             let duty = parse_duty(trimmed_line)?;
-            Ok(Command::Forward(duty))
+            Ok(Command::Forward(CommandPayload::new("F", duty)))
         }
         'R' => {
             let trimmed_line = line.trim()[1..].trim();
             let duty = parse_duty(trimmed_line)?;
-            Ok(Command::Reverse(duty))
+            Ok(Command::Reverse(CommandPayload::new("R", duty)))
         }
         '0'..='9' => {
             let duty = parse_duty(line.trim())?;
-            Ok(Command::Forward(duty))
+            Ok(Command::Forward(CommandPayload::new("F", duty)))
         }
         _ => Err(ParseError::UnknownCommand),
     }
@@ -118,17 +150,23 @@ mod tests {
 
     #[test]
     fn parses_stop() {
-        assert_eq!(parse_command("S"), Ok(Command::Stop));
+        assert_eq!(parse_command("S"), Ok(Command::Stop(CommandPayload::new("S", 0))));
     }
 
     #[test]
     fn parses_forward_with_duty() {
-        assert_eq!(parse_command("F 180"), Ok(Command::Forward(180)));
+        assert_eq!(
+            parse_command("F 180"),
+            Ok(Command::Forward(CommandPayload::new("F", 180)))
+        );
     }
 
     #[test]
     fn parses_bare_number_as_forward() {
-        assert_eq!(parse_command("200"), Ok(Command::Forward(200)));
+        assert_eq!(
+            parse_command("200"),
+            Ok(Command::Forward(CommandPayload::new("F", 200)))
+        );
     }
 
     #[test]
